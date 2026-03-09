@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 
-const APP_VERSION = "v4.7";
+const APP_VERSION = "v4.8";
 
 /* ═══════════════════════════════════════════════════════════════
    W3 NET v3.3  ·  Web3 Networking Hub
@@ -488,96 +488,190 @@ const ALL_TAGS = [...ROLES, ...VERTICALS, ...GEOS];
  * Based on: AngelList, Messari, The Block 2024 research
  * Web3-native: TGE/SAFT/vesting/cliff awareness
  ════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   DEALS TAXONOMY v2.0 — Bulletin Board Model
+   "I'm seeking capital" ↔ "I'm deploying capital"
+   Both sides have SYMMETRIC matching criteria
+   Research: AngelList, Messari, ETHGlobal, Gitcoin, YC, a16z CSX
+   ══════════════════════════════════════════════════════════════════ */
+
+// All capital categories — seeking AND deploying
 const DEAL_ROUNDS = [
-  // Equity / Early
-  { id: "pre-idea",     label: "Pre-Idea",         group: "Early",        color: "t-s" },
-  { id: "angels",       label: "Angels",            group: "Early",        color: "t-a" },
-  { id: "pre-seed",     label: "Pre-Seed",          group: "Early",        color: "t-a" },
-  { id: "seed",         label: "Seed",              group: "Early",        color: "t-b" },
-  // Growth
-  { id: "strategic",    label: "Strategic",         group: "Growth",       color: "t-g" },
-  { id: "series-a",     label: "Series A",          group: "Growth",       color: "t-b" },
-  { id: "series-b",     label: "Series B",          group: "Growth",       color: "t-b" },
+  // Equity
+  { id: "angels",        label: "Angels / FFF",      group: "💼 Equity",        desc: "Friends, family, angels — earliest checks" },
+  { id: "pre-seed",      label: "Pre-Seed",           group: "💼 Equity",        desc: "First institutional money, typically <$1M" },
+  { id: "seed",          label: "Seed",               group: "💼 Equity",        desc: "Core product built, $1–5M typical" },
+  { id: "series-a",      label: "Series A",           group: "💼 Equity",        desc: "Scaling product-market fit, $5–20M" },
+  { id: "series-b",      label: "Series B",           group: "💼 Equity",        desc: "Scaling operations, $20–100M" },
+  { id: "series-c-plus", label: "Series C+",          group: "💼 Equity",        desc: "Growth / pre-IPO" },
+  { id: "strategic",     label: "Strategic",          group: "💼 Equity",        desc: "Corporate/strategic investor, value-add beyond capital" },
   // Token
-  { id: "private-sale", label: "Private Sale",      group: "Token",        color: "t-p" },
-  { id: "pre-tge",      label: "Pre-TGE",           group: "Token",        color: "t-p" },
-  { id: "tge",          label: "TGE",               group: "Token",        color: "t-p" },
-  { id: "public-sale",  label: "Public Sale / IDO", group: "Token",        color: "t-ro" },
-  // Secondary
-  { id: "otc",          label: "OTC",               group: "Secondary",    color: "t-l" },
-  { id: "secondary",    label: "Secondary",         group: "Secondary",    color: "t-l" },
+  { id: "private-sale",  label: "Private Sale",       group: "🪙 Token",         desc: "Early token allocation at discount, KOLs/VCs" },
+  { id: "pre-tge",       label: "Pre-TGE",            group: "🪙 Token",         desc: "SAFT/warrant before token generation" },
+  { id: "tge",           label: "TGE",                group: "🪙 Token",         desc: "Token Generation Event — public" },
+  { id: "ido-ieo",       label: "IDO / IEO / IGO",   group: "🪙 Token",         desc: "Launchpad-led public token sale" },
+  { id: "launchpad",     label: "Launchpad Deal",     group: "🪙 Token",         desc: "Structured launchpad partnership" },
+  { id: "otc",           label: "OTC / Block Trade",  group: "🪙 Token",         desc: "Over-the-counter token trade, secondary" },
+  { id: "lp-provision",  label: "Liquidity Provision",group: "🪙 Token",         desc: "DEX liquidity, market making" },
+  // Debt
+  { id: "safe",          label: "SAFE",               group: "📄 Debt / Hybrid", desc: "Simple Agreement for Future Equity" },
+  { id: "saft",          label: "SAFT",               group: "📄 Debt / Hybrid", desc: "Simple Agreement for Future Tokens" },
+  { id: "convertible",   label: "Convertible Note",   group: "📄 Debt / Hybrid", desc: "Debt converts to equity or tokens" },
+  { id: "venture-debt",  label: "Venture Debt",       group: "📄 Debt / Hybrid", desc: "Non-dilutive debt financing" },
+  { id: "rbf",           label: "Revenue-Based",      group: "📄 Debt / Hybrid", desc: "Revenue share repayment" },
   // Non-dilutive
-  { id: "grants",       label: "Grants",            group: "Non-dilutive", color: "t-t" },
-  { id: "ecosystem-fund", label: "Ecosystem Fund",  group: "Non-dilutive", color: "t-t" },
-  { id: "hackathon",    label: "Hackathon Prize",   group: "Non-dilutive", color: "t-t" },
+  { id: "grant-web3",    label: "Web3 Foundation Grant", group: "🎁 Non-Dilutive", desc: "Polkadot/Ethereum/Solana/Near/Cosmos ecosystem grants" },
+  { id: "grant-defi",    label: "DeFi Protocol Grant",   group: "🎁 Non-Dilutive", desc: "Arbitrum/Optimism/Uniswap/Compound grants" },
+  { id: "grant-gov",     label: "Government Grant",      group: "🎁 Non-Dilutive", desc: "SBIR, EU Horizon, Singapore MAS, UAE grants" },
+  { id: "gitcoin",       label: "Gitcoin Round",         group: "🎁 Non-Dilutive", desc: "Quadratic funding via Gitcoin" },
+  { id: "retropgf",      label: "RetroPGF",              group: "🎁 Non-Dilutive", desc: "Optimism retroactive public goods funding" },
+  { id: "ecosystem-fund",label: "Ecosystem Fund",        group: "🎁 Non-Dilutive", desc: "BNB Chain/Polygon/Chainlink ecosystem programs" },
+  // Accelerators
+  { id: "accelerator",   label: "Accelerator Program",  group: "🚀 Accelerator", desc: "YC, a16z CSX, Outlier Ventures, Alliance DAO" },
+  { id: "incubator",     label: "Incubator",             group: "🚀 Accelerator", desc: "Early-stage incubation with equity+support" },
+  { id: "launchhouse",   label: "Launchhouse / Studio",  group: "🚀 Accelerator", desc: "Venture studio co-building model" },
+  // Hackathons
+  { id: "hackathon",     label: "Hackathon Prize",       group: "🏆 Hackathon",   desc: "ETHGlobal, Chainlink, DoraHacks, Encode" },
+  { id: "bounty",        label: "Bounty / Quest",        group: "🏆 Hackathon",   desc: "Protocol bounty or quest reward" },
+  // Secondary
+  { id: "secondary",     label: "Secondary / Tender",    group: "🔄 Secondary",   desc: "Secondary sale of existing shares/tokens" },
 ];
 
-// Fundraising lifecycle (project seeking capital)
-const DEAL_STATUSES_FUNDRAISING = [
-  { id: "draft",        label: "Draft",         icon: "○",  color: "var(--fg3)",         desc: "Not yet published" },
-  { id: "open",         label: "Open",          icon: "●",  color: "var(--tf-g)",        desc: "Actively raising" },
-  { id: "in-review",    label: "In Review",     icon: "◑",  color: "oklch(0.6 0.14 265)", desc: "Investor reviewing" },
-  { id: "dd-active",    label: "DD Active",     icon: "◑",  color: "oklch(0.6 0.14 80)", desc: "Due diligence ongoing" },
-  { id: "term-sheet",   label: "Term Sheet",    icon: "◕",  color: "oklch(0.6 0.14 80)", desc: "Term sheet received" },
-  { id: "signed",       label: "Signed",        icon: "◕",  color: "oklch(0.6 0.14 160)", desc: "Docs signed, awaiting funds" },
-  { id: "funded",       label: "Funded ✓",      icon: "●",  color: "var(--tf-g)",        desc: "Round closed successfully" },
-  { id: "paused",       label: "Paused",        icon: "⏸",  color: "var(--warn-fg)",     desc: "Temporarily on hold" },
-  { id: "closed-lost",  label: "Closed",        icon: "×",  color: "var(--fg3)",         desc: "Round did not close" },
-  { id: "cancelled",    label: "Cancelled",     icon: "×",  color: "var(--danger-fg)",   desc: "Withdrawn by issuer" },
+/* ── Unified statuses (bulletin board model, not Kanban) ── */
+const DEAL_STATUSES = [
+  { id: "active",   label: "Active",   icon: "●", color: "var(--tf-g)",      desc: "Actively seeking / accepting applications" },
+  { id: "paused",   label: "Paused",   icon: "⏸", color: "var(--warn-fg)",   desc: "Temporarily on hold" },
+  { id: "filled",   label: "Filled",   icon: "✓", color: "oklch(0.6 0.14 160)", desc: "Found what I was looking for" },
+  { id: "expired",  label: "Expired",  icon: "⌛", color: "var(--fg3)",       desc: "Deadline passed" },
+  { id: "draft",    label: "Draft",    icon: "○", color: "var(--fg3)",       desc: "Not yet published" },
+];
+// Keep backwards compat aliases
+const DEAL_STATUSES_FUNDRAISING = DEAL_STATUSES;
+const DEAL_STATUSES_INVESTING   = DEAL_STATUSES;
+
+/* ── Seeking type (for "Seeking" side) ── */
+const SEEKING_TYPES = [
+  { id: "capital",      label: "💰 Capital",       desc: "Equity, token, or debt investment" },
+  { id: "grant",        label: "🎁 Grant",          desc: "Non-dilutive grant funding" },
+  { id: "hackathon",    label: "🏆 Hackathon",      desc: "Prize or hackathon reward" },
+  { id: "accelerator",  label: "🚀 Accelerator",    desc: "Program with funding + support" },
+  { id: "strategic",    label: "🤝 Strategic",      desc: "Partnership / ecosystem deal" },
+  { id: "liquidity",    label: "💧 Liquidity",      desc: "Market maker / LP / OTC" },
+  { id: "any",          label: "🔓 Any",            desc: "Open to all types" },
 ];
 
-// Investing lifecycle (capital deployer)
-const DEAL_STATUSES_INVESTING = [
-  { id: "open",         label: "Deploying",     icon: "●",  color: "var(--tf-g)",        desc: "Actively looking" },
-  { id: "paused",       label: "Paused",        icon: "⏸",  color: "var(--warn-fg)",     desc: "Temporarily not investing" },
-  { id: "funded",       label: "Deployed",      icon: "✓",  color: "oklch(0.6 0.14 160)", desc: "Capital deployed" },
-  { id: "cancelled",    label: "Closed",        icon: "×",  color: "var(--fg3)",         desc: "No longer investing" },
-];
-
-// Unified (for display/filter when mode unknown)
-const DEAL_STATUSES = [...new Map([
-  ...DEAL_STATUSES_FUNDRAISING,
-  ...DEAL_STATUSES_INVESTING,
-].map(s => [s.id, s])).values()];
-
+/* ── Instruments ── */
 const INSTRUMENTS = [
-  { id: "saft",        label: "SAFT",               desc: "Simple Agreement for Future Tokens" },
-  { id: "safe",        label: "SAFE",                desc: "Simple Agreement for Future Equity" },
-  { id: "safe-warrant",label: "SAFE + Token Warrant",desc: "Equity + future token rights" },
-  { id: "equity",      label: "Equity",              desc: "Traditional equity stake" },
-  { id: "token",       label: "Token",               desc: "Direct token purchase" },
-  { id: "convertible", label: "Convertible Note",    desc: "Debt converting to equity/tokens" },
-  { id: "otc",         label: "OTC",                 desc: "Over-the-counter token trade" },
-  { id: "grant",       label: "Grant",               desc: "Non-dilutive funding" },
-  { id: "revenue-share", label: "Revenue Share",     desc: "% of future revenue" },
-  { id: "lp",          label: "LP Interest",         desc: "Fund LP participation" },
-  { id: "any",         label: "Any / Open",          desc: "Open to discuss" },
+  { id: "saft",          label: "SAFT",                desc: "Simple Agreement for Future Tokens" },
+  { id: "safe",          label: "SAFE",                desc: "Simple Agreement for Future Equity" },
+  { id: "safe-warrant",  label: "SAFE + Token Warrant",desc: "Equity + future token rights" },
+  { id: "equity",        label: "Equity",              desc: "Traditional equity stake" },
+  { id: "token",         label: "Token",               desc: "Direct token purchase" },
+  { id: "convertible",   label: "Convertible Note",    desc: "Debt converting to equity/tokens" },
+  { id: "venture-debt",  label: "Venture Debt",        desc: "Non-dilutive debt" },
+  { id: "rbf",           label: "Revenue Share",       desc: "% of future revenue" },
+  { id: "grant",         label: "Grant",               desc: "Non-dilutive grant" },
+  { id: "otc",           label: "OTC",                 desc: "Over-the-counter trade" },
+  { id: "lp",            label: "LP Interest",         desc: "Fund LP participation" },
+  { id: "any",           label: "Any / Open",          desc: "Open to discuss" },
 ];
 
+/* ── Currencies — fiat + crypto ── */
+const CURRENCIES = [
+  // Fiat
+  { id: "USD",  label: "USD — US Dollar",       group: "Fiat" },
+  { id: "EUR",  label: "EUR — Euro",            group: "Fiat" },
+  { id: "GBP",  label: "GBP — British Pound",  group: "Fiat" },
+  { id: "SGD",  label: "SGD — Singapore Dollar",group: "Fiat" },
+  { id: "AED",  label: "AED — UAE Dirham",      group: "Fiat" },
+  { id: "CHF",  label: "CHF — Swiss Franc",     group: "Fiat" },
+  { id: "JPY",  label: "JPY — Japanese Yen",    group: "Fiat" },
+  { id: "KRW",  label: "KRW — Korean Won",      group: "Fiat" },
+  { id: "BRL",  label: "BRL — Brazilian Real",  group: "Fiat" },
+  { id: "AUD",  label: "AUD — Australian Dollar",group: "Fiat" },
+  // Stablecoins
+  { id: "USDT", label: "USDT — Tether",         group: "Stablecoin" },
+  { id: "USDC", label: "USDC — USD Coin",       group: "Stablecoin" },
+  { id: "DAI",  label: "DAI — MakerDAO",        group: "Stablecoin" },
+  // Crypto
+  { id: "ETH",  label: "ETH — Ethereum",        group: "Crypto" },
+  { id: "BTC",  label: "BTC — Bitcoin",         group: "Crypto" },
+  { id: "SOL",  label: "SOL — Solana",          group: "Crypto" },
+  { id: "BNB",  label: "BNB — BNB Chain",       group: "Crypto" },
+  { id: "MATIC",label: "MATIC — Polygon",       group: "Crypto" },
+  { id: "AVAX", label: "AVAX — Avalanche",      group: "Crypto" },
+  { id: "ARB",  label: "ARB — Arbitrum",        group: "Crypto" },
+  { id: "OP",   label: "OP — Optimism",         group: "Crypto" },
+  // Special
+  { id: "TOKEN",label: "Own Token",             group: "Other" },
+  { id: "MIXED",label: "Mixed",                 group: "Other" },
+];
+
+/* ── Token types ── */
 const TOKEN_TYPES = [
-  { id: "utility",     label: "Utility" },
-  { id: "governance",  label: "Governance" },
-  { id: "revenue",     label: "Revenue Share" },
-  { id: "payment",     label: "Payment" },
-  { id: "nft",         label: "NFT" },
-  { id: "rwa",         label: "RWA Token" },
-  { id: "none",        label: "No Token" },
+  { id: "utility",    label: "Utility" },
+  { id: "governance", label: "Governance" },
+  { id: "revenue",    label: "Revenue Share" },
+  { id: "payment",    label: "Payment" },
+  { id: "nft",        label: "NFT" },
+  { id: "rwa",        label: "RWA Token" },
+  { id: "none",       label: "No Token" },
 ];
 
+/* ── Investor / Deployer types ── */
 const INVESTOR_TYPES = [
-  { id: "angel",        label: "Angel",          range: "$1K–$500K" },
-  { id: "micro-vc",     label: "Micro VC",       range: "$50K–$2M" },
-  { id: "vc",           label: "VC Fund",        range: "$500K–$50M" },
-  { id: "crypto-fund",  label: "Crypto Fund",    range: "$100K–$20M" },
-  { id: "family-office",label: "Family Office",  range: "$1M–$100M" },
-  { id: "syndicate",    label: "Syndicate",      range: "$25K–$5M" },
-  { id: "dao",          label: "DAO / Community",range: "$10K–$5M" },
-  { id: "ecosystem",    label: "Ecosystem Fund", range: "$10K–$5M" },
-  { id: "corporate-vc", label: "Corporate VC",   range: "$500K–$50M" },
-  { id: "hni",          label: "HNI / UHNWI",   range: "$500K–$50M" },
+  { id: "angel",         label: "Angel",             range: "$1K–$500K" },
+  { id: "micro-vc",      label: "Micro VC",          range: "$50K–$2M" },
+  { id: "vc",            label: "VC Fund",           range: "$500K–$50M" },
+  { id: "crypto-fund",   label: "Crypto Fund",       range: "$100K–$20M" },
+  { id: "family-office", label: "Family Office",     range: "$1M–$100M" },
+  { id: "syndicate",     label: "Syndicate",         range: "$25K–$5M" },
+  { id: "dao",           label: "DAO / Community",   range: "$10K–$5M" },
+  { id: "ecosystem",     label: "Ecosystem Fund",    range: "$10K–$5M" },
+  { id: "corporate-vc",  label: "Corporate VC",      range: "$500K–$50M" },
+  { id: "hni",           label: "HNI / UHNWI",       range: "$500K–$50M" },
+  { id: "foundation",    label: "Foundation",         range: "$10K–$10M" },
+  { id: "accelerator",   label: "Accelerator",        range: "$50K–$500K" },
+  { id: "launchpad",     label: "Launchpad",          range: "$100K–$2M" },
+  { id: "grant-org",     label: "Grant Organization", range: "$10K–$5M" },
 ];
 
-const ROUND_STAGE_ORDER = ["pre-idea","angels","pre-seed","seed","strategic","private-sale","series-a","series-b","pre-tge","tge","public-sale","otc","secondary","grants","ecosystem-fund","hackathon"];
+/* ── Value-add options for investors ── */
+const VALUE_ADD = [
+  { id: "tech",        label: "🛠 Tech / Dev" },
+  { id: "marketing",   label: "📢 Marketing" },
+  { id: "bd",          label: "🤝 BD / Partnerships" },
+  { id: "exchange",    label: "📊 Exchange Listings" },
+  { id: "legal",       label: "⚖️ Legal / Compliance" },
+  { id: "tokenomics",  label: "🔢 Tokenomics" },
+  { id: "liquidity",   label: "💧 Liquidity / MM" },
+  { id: "community",   label: "👥 Community" },
+  { id: "regulatory",  label: "🏛 Regulatory" },
+  { id: "none",        label: "Capital only" },
+];
+
+/* ── Legal jurisdictions ── */
+const JURISDICTIONS = [
+  { id: "cayman",    label: "Cayman Islands" },
+  { id: "bvi",       label: "BVI" },
+  { id: "delaware",  label: "US Delaware" },
+  { id: "singapore", label: "Singapore" },
+  { id: "uae",       label: "UAE / ADGM" },
+  { id: "swiss",     label: "Switzerland" },
+  { id: "estonia",   label: "Estonia" },
+  { id: "uk",        label: "UK" },
+  { id: "other",     label: "Other" },
+];
+
+/* ── Stage order for synergy scoring ── */
+const ROUND_STAGE_ORDER = [
+  "angels","pre-seed","seed","series-a","series-b","series-c-plus","strategic",
+  "private-sale","pre-tge","tge","ido-ieo","launchpad","otc","lp-provision",
+  "safe","saft","convertible","venture-debt","rbf",
+  "grant-web3","grant-defi","grant-gov","gitcoin","retropgf","ecosystem-fund",
+  "accelerator","incubator","launchhouse",
+  "hackathon","bounty","secondary",
+];
 
 
 /* ══════════ ENTITY GOVERNANCE ══════════
@@ -911,8 +1005,8 @@ const SEED_PROJECTS = [
   { id: "p2", name: "zkID Protocol", website: "zkid.dev", stage: "Development", description: "ZK-based on-chain identity and reputation system.", tags: ["zk", "identity", "privacy", "us"], memberIds: [{ contactId: "c5", role: "Ecosystem Partner" }, { contactId: "c1", role: "Investor" }], partnerCompanyIds: ["co1", "co4"], karma: 18, karmaBreakdown: { up: 13, down: 1 }, reports: [], trustStatus: "ok", views: 312, createdBy: "c5", createdAt: "2024-03-01" },
 ];
 const SEED_DEALS = [
-  { id: "d1", title: "Seed Round — FlowBridge", projectName: "FlowBridge", projectId: "p1", round: "seed", status: "open", amount: 3000000, currency: "USD", token: "FLOW", tokenType: "utility", instrument: "saft", valuationCap: 10000000, fdv: null, cliffMonths: 6, vestingMonths: 18, tgeUnlockPct: 10, description: "Raising $3M seed for cross-chain bridge.", terms: "$10M valuation cap. SAFT. 18m vest 6m cliff.", leadRequired: true, proRata: true, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "1200 waitlist, $850K TVL testnet", existingInvestors: "", closeDate: "2024-06-01", tags: ["bridge","defi","l2","sg"], contactIds: ["c2","c1"], companyIds: [], projectIds: ["p1"], comments: [], views: 312, createdBy: "c2", createdAt: "2024-02-01" },
-  { id: "d2", title: "Strategic Round — ArcadeChain", projectName: "ArcadeChain", projectId: null, round: "strategic", status: "open", amount: 1500000, currency: "USD", token: "ARC", tokenType: "governance", instrument: "safe-warrant", valuationCap: 8000000, fdv: 40000000, cliffMonths: 12, vestingMonths: 24, tgeUnlockPct: 5, description: "Gaming L2. Looking for exchanges, launchpads, gaming studios.", terms: "Token warrants + equity. 24m vesting.", leadRequired: false, proRata: false, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "50K TPS testnet, 3 studios LOI", existingInvestors: "Spartan Group", closeDate: "", tags: ["gamefi","l2","sg","asia"], contactIds: ["c4"], companyIds: [], projectIds: [], comments: [], views: 234, createdBy: "c4", createdAt: "2024-02-20" },
+  { id: "d1", title: "Seed Round — FlowBridge", projectName: "FlowBridge", projectId: "p1", round: "seed", status: "active", seekingType: "capital", amount: 3000000, currency: "USD", token: "FLOW", tokenType: "utility", instrument: "saft", valuationCap: 10000000, fdv: null, cliffMonths: 6, vestingMonths: 18, tgeUnlockPct: 10, description: "Raising $3M seed for cross-chain bridge.", terms: "$10M valuation cap. SAFT. 18m vest 6m cliff.", leadRequired: true, proRata: true, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "1200 waitlist, $850K TVL testnet", existingInvestors: "", closeDate: "2024-06-01", tags: ["bridge","defi","l2","sg"], contactIds: ["c2","c1"], companyIds: [], projectIds: ["p1"], comments: [], views: 312, createdBy: "c2", createdAt: "2024-02-01" },
+  { id: "d2", title: "Strategic Round — ArcadeChain", projectName: "ArcadeChain", projectId: null, round: "strategic", status: "active", seekingType: "strategic", amount: 1500000, currency: "USD", token: "ARC", tokenType: "governance", instrument: "safe-warrant", valuationCap: 8000000, fdv: 40000000, cliffMonths: 12, vestingMonths: 24, tgeUnlockPct: 5, description: "Gaming L2. Looking for exchanges, launchpads, gaming studios.", terms: "Token warrants + equity. 24m vesting.", leadRequired: false, proRata: false, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "50K TPS testnet, 3 studios LOI", existingInvestors: "Spartan Group", closeDate: "", tags: ["gamefi","l2","sg","asia"], contactIds: ["c4"], companyIds: [], projectIds: [], comments: [], views: 234, createdBy: "c4", createdAt: "2024-02-20" },
 ];
 const SEED_LF = [
   { id: "lf1", type: "looking", title: "Market Maker for DEX listing", body: "Launching on Uniswap v4, need professional MM. Budget $30k/month.", tags: ["market-maker", "dex", "defi"], createdBy: "c2", createdAt: "2024-03-12", expires: "2024-04-12", views: 89, comments: [] },
@@ -1335,10 +1429,12 @@ function EntityPopup({ entityType, entityId, contacts, companies, projects, deal
   const renderDeal = () => {
     const isInv = entity.dealMode === "investing";
     const rnd = DEAL_ROUNDS.find(r => r.id === entity.round);
-    const st = (isInv ? DEAL_STATUSES_INVESTING : DEAL_STATUSES_FUNDRAISING).find(s => s.id === entity.status) || DEAL_STATUSES[0];
+    const st  = DEAL_STATUSES.find(s => s.id === entity.status) || DEAL_STATUSES[0];
     const instr = INSTRUMENTS.find(i => i.id === entity.instrument);
-    const ctcs = (entity.contactIds || []).map((id: string) => contacts.find(c => c.id === id)).filter(Boolean);
+    const seekingType = SEEKING_TYPES.find(s => s.id === entity.seekingType);
+    const currency = entity.currency || "USD";
     const accentColor = isInv ? "oklch(0.55 0.16 160)" : "oklch(0.55 0.16 240)";
+    const ctcs = (entity.contactIds || []).map((id: string) => contacts.find(c => c.id === id)).filter(Boolean);
     return (
       <div>
         {/* Header */}
@@ -1346,18 +1442,22 @@ function EntityPopup({ entityType, entityId, contacts, companies, projects, deal
           <div style={{ width: 4, background: accentColor, borderRadius: 2, alignSelf: "stretch", minHeight: 52, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 4 }}>
-              {isInv ? "💰 Capital Deployment" : "📈 Fundraising Deal"}
+              {isInv ? "💰 Deploying Capital" : seekingType ? seekingType.label : "📈 Seeking Capital"}
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.3px", lineHeight: 1.2 }}>{entity.title}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: 11.5, color: st.color, background: "var(--bg3)", border: `1px solid ${st.color}33`, borderRadius: 4, padding: "2px 7px", fontWeight: 600 }}>
                 {st.icon} {st.label}
               </span>
-              {!isInv && rnd && <span style={{ fontSize: 12, color: "var(--fg2)", background: "var(--bg3)", padding: "2px 7px", borderRadius: 4 }}>{rnd.label}</span>}
-              {!isInv && entity.amount > 0 && <span style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 800, color: "var(--tf-g)" }}>{fv(entity.amount)}</span>}
+              {rnd && <span style={{ fontSize: 12, color: "var(--fg2)", background: "var(--bg3)", padding: "2px 7px", borderRadius: 4 }}>{rnd.label}</span>}
+              {!isInv && entity.amount > 0 && (
+                <span style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 800, color: "var(--tf-g)" }}>
+                  {entity.amountMin > 0 ? `${fv(entity.amountMin)}–` : ""}{fv(entity.amount)} <span style={{ fontSize: 11, fontWeight: 500 }}>{currency}</span>
+                </span>
+              )}
               {isInv && (entity.minTicket > 0 || entity.maxTicket > 0) && (
                 <span style={{ fontSize: 13, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--tf-g)" }}>
-                  {fv(entity.minTicket||0)} – {entity.maxTicket > 0 ? fv(entity.maxTicket) : "∞"}
+                  {fv(entity.minTicket||0)} – {entity.maxTicket > 0 ? fv(entity.maxTicket) : "∞"} <span style={{ fontSize: 11, fontWeight: 500 }}>{currency}</span>
                 </span>
               )}
               {instr && <span style={{ fontSize: 11, background: "var(--bg3)", padding: "2px 6px", borderRadius: 4, color: "var(--fg2)" }}>🔑 {instr.label}</span>}
@@ -1449,12 +1549,28 @@ function EntityPopup({ entityType, entityId, contacts, companies, projects, deal
         {/* Close date */}
         {entity.closeDate && <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 12 }}>⏰ Close date: <strong style={{ color: "var(--fg)" }}>{entity.closeDate}</strong></div>}
 
-        {/* Flags row */}
-        {!isInv && (entity.leadRequired || entity.proRata || entity.kycRequired) && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            {entity.leadRequired && <span style={{ fontSize: 11.5, color: "var(--warn-fg)", background: "var(--warn-bg)", border: "1px solid var(--warn-border)", borderRadius: 4, padding: "3px 8px" }}>⚡ Lead investor sought</span>}
-            {entity.proRata && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>📋 Pro-rata offered</span>}
-            {entity.kycRequired && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>🪪 KYC required</span>}
+        {/* Flags row — seeking side */}
+        {!isInv && (entity.leadRequired || entity.proRata || entity.kycRequired || entity.boardSeatOk || entity.audited || entity.doxxed) && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+            {entity.leadRequired && <span style={{ fontSize: 11.5, color: "var(--warn-fg)", background: "var(--warn-bg)", border: "1px solid var(--warn-border)", borderRadius: 4, padding: "3px 8px" }}>⚡ Lead sought</span>}
+            {entity.proRata      && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>📋 Pro-rata</span>}
+            {entity.kycRequired  && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>🪪 KYC required</span>}
+            {entity.boardSeatOk  && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>🪑 Board seat OK</span>}
+            {entity.audited      && <span style={{ fontSize: 11.5, color: "var(--tf-g)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>✅ Audited</span>}
+            {entity.doxxed       && <span style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px" }}>👤 Doxxed team</span>}
+          </div>
+        )}
+        {/* Legal jurisdiction */}
+        {entity.jurisdiction && (
+          <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 10 }}>
+            ⚖️ Jurisdiction: <strong style={{ color: "var(--fg)" }}>{JURISDICTIONS.find(j => j.id === entity.jurisdiction)?.label || entity.jurisdiction}</strong>
+          </div>
+        )}
+        {/* Value-add (deploying side) */}
+        {isInv && entity.valueAdd?.length > 0 && (
+          <div style={{ fontSize: 12.5, marginBottom: 12 }}>
+            <span style={{ color: "var(--fg3)", marginRight: 6 }}>Value-add:</span>
+            {entity.valueAdd.map((v: string) => <span key={v} style={{ fontSize: 11.5, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 7px", marginRight: 4 }}>{VALUE_ADD.find(x=>x.id===v)?.label||v}</span>)}
           </div>
         )}
 
@@ -2372,8 +2488,8 @@ function SynergyCard({ fundraiser, investor, onOpen }: { fundraiser: any; invest
 
 /* ── Synergy Tab ──────────────────────────────────────────────────── */
 function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (type: string, id: string) => void; onSwitchTab: (tab: string) => void }) {
-  const ACTIVE_F = ["open","in-review","dd-active","term-sheet","signed","draft"];
-  const ACTIVE_I = ["open"];
+  const ACTIVE_F = ["active","draft"];
+  const ACTIVE_I = ["active","draft"];
   const fundraisers = deals.filter(d => d.dealMode !== "investing" && ACTIVE_F.includes(d.status));
   const investors   = deals.filter(d => d.dealMode === "investing"  && ACTIVE_I.includes(d.status));
 
@@ -2548,12 +2664,12 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
       <div className="ph">
         <div>
           <div className="ph-t">Deals</div>
-          <div className="ph-s">{fundraisingDeals.length} fundraising · {investingDeals.length} investing</div>
+          <div className="ph-s">{fundraisingDeals.length} seeking · {investingDeals.length} deploying</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {tab !== "synergy" && (
             <button className="btn btn-p" onClick={() => { setCreatingType(tab === "investing" ? "investing" : "fundraising"); setCreating(true); }}>
-              <I n="plus" s={13} /> {tab === "investing" ? "Deploy Capital" : "Add Deal"}
+              <I n="plus" s={13} /> {tab === "investing" ? "Post Capital" : "Seek Capital"}
             </button>
           )}
         </div>
@@ -2565,10 +2681,10 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           className={`tab${tab === "fundraising" ? " on" : ""}`}
           onClick={() => { setTab("fundraising"); setFltStatus(null); setQ(""); }}
         >
-          📈 Fundraising
-          {fundraisingDeals.filter(d => d.status === "open").length > 0 &&
+          📈 Seeking
+          {fundraisingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
-              {fundraisingDeals.filter(d => d.status === "open").length} open
+              {fundraisingDeals.filter(d => d.status === "active").length} active
             </span>
           }
         </button>
@@ -2576,10 +2692,10 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           className={`tab${tab === "investing" ? " on" : ""}`}
           onClick={() => { setTab("investing"); setFltStatus(null); setQ(""); }}
         >
-          💰 Investing
-          {investingDeals.filter(d => d.status === "open").length > 0 &&
+          💰 Deploying
+          {investingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
-              {investingDeals.filter(d => d.status === "open").length} active
+              {investingDeals.filter(d => d.status === "active").length} active
             </span>
           }
         </button>
@@ -2590,8 +2706,8 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
         >
           🤝 Synergy
           {(() => {
-            const f = deals.filter(d => d.dealMode !== "investing" && d.status === "open");
-            const inv = deals.filter(d => d.dealMode === "investing" && d.status === "open");
+            const f = deals.filter(d => d.dealMode !== "investing" && d.status === "active");
+            const inv = deals.filter(d => d.dealMode === "investing" && d.status === "active");
             let hot = 0;
             for (const fr of f) for (const iv of inv) { if (computeSynergy(fr, iv).tier === "hot") hot++; }
             return hot > 0 ? <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", color: "var(--warn-fg)", fontWeight: 700 }}>🔥{hot}</span> : null;
@@ -2651,11 +2767,11 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
                       {st.icon} {st.label}
                     </span>
                     {!isInvesting && <span style={{ fontSize: 11, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>{rnd.label}</span>}
-                    {d.amount > 0 && <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--tf-g)" }}>{fv(d.amount)}</span>}
+                    {d.amount > 0 && <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--tf-g)" }}>{fv(d.amount)} {d.currency && d.currency !== "USD" ? d.currency : ""}</span>}
                     {/* Investor: ticket range */}
                     {isInvesting && (d.minTicket > 0 || d.maxTicket > 0) && (
                       <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--tf-g)", fontWeight: 600 }}>
-                        {fv(d.minTicket || 0)}–{d.maxTicket > 0 ? fv(d.maxTicket) : "∞"}
+                        {fv(d.minTicket || 0)}–{d.maxTicket > 0 ? fv(d.maxTicket) : "∞"} {d.currency && d.currency !== "USD" ? d.currency : ""}
                       </span>
                     )}
                     {/* Fundraiser: instrument */}
@@ -2972,7 +3088,7 @@ function localNLP(text, type, { contacts, companies, projects }) {
       result.projectName = projectName;
       confidence += 0.15;
     }
-    result.status = 'open';
+    result.status = 'active';
     confidence += 0.05;
   }
 
@@ -3307,7 +3423,7 @@ function CreateModal({ type, dealMode, onClose, onSave, contacts, companies, pro
     contact: { name: "", company: "", website: "", role: "founder", status: "active", telegram: "", twitter: "", linkedin: "", email: "", tags: [], score: 70, notes: "", karma: 0, karmaBreakdown: { up: 0, down: 0 }, reports: [], trustStatus: "ok", views: 0, companyIds: [], projectIds: [], createdBy: authorId, createdAt: today() },
     company: { name: "", website: "", stage: "Seed", description: "", tags: [], memberIds: [], partnerIds: [], karma: 0, karmaBreakdown: { up: 0, down: 0 }, reports: [], trustStatus: "ok", views: 0, createdBy: authorId, createdAt: today() },
     project: { name: "", website: "", stage: "Development", description: "", tags: [], memberIds: [], partnerCompanyIds: [], karma: 0, karmaBreakdown: { up: 0, down: 0 }, reports: [], trustStatus: "ok", views: 0, createdBy: authorId, createdAt: today() },
-    deal: { title: "", projectName: "", projectId: null, round: "seed", status: "open", amount: 0, currency: "USD", token: "", description: "", terms: "", contactIds: [], companyIds: [], projectIds: [], comments: [], views: 0, createdBy: authorId, createdAt: today() },
+    deal: { title: "", projectName: "", projectId: null, round: "seed", status: "active", amount: 0, currency: "USD", token: "", description: "", terms: "", seekingType: "capital", contactIds: [], companyIds: [], projectIds: [], comments: [], views: 0, createdBy: authorId, createdAt: today() },
     lf: { type: "looking", title: "", body: "", tags: [], expires: "", views: 0, comments: [], createdBy: authorId, createdAt: today() },
   };
 
@@ -3452,7 +3568,7 @@ Fill ALL schema fields from this research. Add source info to notes: "Auto-enric
         contact: `{"name":str,"company":str,"website":str,"role":"one of roles","status":"active|partner|inactive","telegram":str,"twitter":str,"linkedin":str,"email":str,"notes":str,"tags":str[],"subEntities":[{"type":"company|project","data":{fields}}],"dedup":{"entity":{"id":str,"name":str},"score":0-1}|null}`,
         company: `{"name":str,"website":str,"stage":"Idea|Pre-Seed|Seed|Series A|Series B|Growth|Public|Acquired","description":str,"tags":str[],"subEntities":[{"type":"contact","data":{"name":str,"role":str}}],"dedup":null}`,
         project: `{"name":str,"website":str,"stage":"Concept|Development|Testnet|Mainnet|Post-TGE|Mature","description":str,"tags":str[],"subEntities":[{"type":"contact","data":{"name":str,"role":str}}],"dedup":null}`,
-        deal: `{"title":str,"projectName":str,"round":"angels|pre-seed|seed|strategic|private-sale|series-a|series-b|pre-tge|public-sale|tge|otc|grants|ecosystem-fund","status":"open|in-progress|closed|cancelled","amount":number,"currency":str,"token":str,"description":str,"terms":str,"tags":str[],"subEntities":[{"type":"contact","data":{"name":str,"role":str,"telegram":str}},{"type":"project","data":{"name":str,"website":str,"stage":str,"description":str,"tags":str[]}}],"dedup":null}`,
+        deal: `{"title":str,"projectName":str,"seekingType":"capital|grant|hackathon|accelerator|strategic|liquidity|any","round":"angels|pre-seed|seed|series-a|series-b|series-c-plus|strategic|private-sale|pre-tge|tge|ido-ieo|otc|grant-web3|grant-defi|grant-gov|gitcoin|retropgf|ecosystem-fund|accelerator|incubator|hackathon|bounty|safe|saft|convertible","status":"active|paused|filled|expired|draft","amount":number,"amountMin":number,"currency":"USD|EUR|USDT|USDC|ETH|BTC|SOL|BNB|MATIC|AVAX|ARB|OP|GBP|SGD|AED|TOKEN|MIXED","instrument":"saft|safe|safe-warrant|equity|token|convertible|venture-debt|rbf|grant|otc|lp|any","token":str,"tokenType":"utility|governance|revenue|payment|nft|rwa|none","tokenExists":"yes|planned|no","valuationCap":number,"fdv":number,"cliffMonths":number,"vestingMonths":number,"tgeUnlockPct":number,"description":str,"traction":str,"existingInvestors":str,"closeDate":str,"deckUrl":str,"dataroomUrl":str,"jurisdiction":"cayman|bvi|delaware|singapore|uae|swiss|estonia|uk|other","leadRequired":bool,"proRata":bool,"kycRequired":bool,"boardSeatOk":bool,"audited":bool,"doxxed":bool,"geoRestrictions":str[],"idealInvestorTypes":str[],"terms":str,"tags":str[],"subEntities":[{"type":"contact","data":{"name":str,"role":str,"telegram":str}},{"type":"project","data":{"name":str,"website":str,"stage":str,"description":str,"tags":str[]}}],"dedup":null}`,
         lf: `{"type":"looking|offering|ask|announce","title":str,"body":str,"tags":str[],"subEntities":[],"dedup":null}`,
       };
       const existingCtx = "Contacts:" + JSON.stringify(contacts.slice(0,15).map(c=>({id:c.id,name:c.name}))) +
@@ -3821,42 +3937,84 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                 </div>
               </>)}
 
-              {/* DEAL — FUNDRAISING mode (v2) */}
+              {/* ── SEEKING (📈 I need capital/grant/support) ── */}
               {type === "deal" && props.dealMode !== "investing" && (<>
-                {/* Core */}
-                <div className="fg0"><label className="lbl">Deal Title *</label><input className="inp" style={fieldStyle("title")} placeholder="Seed Round — FlowBridge" value={form.title} onChange={e => set("title", e.target.value)} autoFocus /></div>
+                {/* What are you seeking? */}
+                <div className="fg0">
+                  <label className="lbl">What are you seeking? *</label>
+                  <div className="tw">
+                    {SEEKING_TYPES.map(s => (
+                      <button key={s.id} title={s.desc}
+                        className={`tp${(form.seekingType||"capital") === s.id ? " on" : ""}`}
+                        onClick={() => set("seekingType", s.id)}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="fg0"><label className="lbl">Title *</label>
+                  <input className="inp" style={fieldStyle("title")} autoFocus
+                    placeholder="e.g. Seed Round — FlowBridge · $2M · SAFT"
+                    value={form.title||""} onChange={e => set("title", e.target.value)} />
+                </div>
+
                 <div className="g2">
                   <div className="fg0">
-                    <label className="lbl">Round / Stage</label>
-                    <select className="sel" style={fieldStyle("round")} value={form.round} onChange={e => set("round", e.target.value)}>
-                      {Object.entries(DEAL_ROUNDS.reduce((g: any, r) => { (g[r.group] = g[r.group]||[]).push(r); return g; }, {})).map(([grp, items]: any) => (
-                        <optgroup key={grp} label={grp}>{items.map((r: any) => <option key={r.id} value={r.id}>{r.label}</option>)}</optgroup>
+                    <label className="lbl">Category / Round</label>
+                    <select className="sel" style={fieldStyle("round")} value={form.round||""} onChange={e => set("round", e.target.value)}>
+                      <option value="">— Select —</option>
+                      {Object.entries(DEAL_ROUNDS.reduce((g: any, r) => { (g[r.group]=g[r.group]||[]).push(r); return g; }, {})).map(([grp, items]: any) => (
+                        <optgroup key={grp} label={grp}>{items.map((r: any) => <option key={r.id} value={r.id} title={r.desc}>{r.label}</option>)}</optgroup>
                       ))}
                     </select>
                   </div>
                   <div className="fg0">
                     <label className="lbl">Status</label>
-                    <select className="sel" style={fieldStyle("status")} value={form.status} onChange={e => set("status", e.target.value)}>
-                      {DEAL_STATUSES_FUNDRAISING.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                    <select className="sel" style={fieldStyle("status")} value={form.status||"active"} onChange={e => set("status", e.target.value)}>
+                      {DEAL_STATUSES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label} — {s.desc}</option>)}
                     </select>
                   </div>
                 </div>
 
-                {/* Amount + Instrument */}
-                <div className="g2">
-                  <div className="fg0">
-                    <label className="lbl">Target Amount (USD) *</label>
-                    <input className="inp" style={fieldStyle("amount")} type="number" placeholder="3000000" value={form.amount || ""} onChange={e => set("amount", Number(e.target.value))} />
-                  </div>
-                  <div className="fg0">
-                    <label className="lbl">Instrument *</label>
-                    <select className="sel" style={fieldStyle("instrument")} value={form.instrument || "any"} onChange={e => set("instrument", e.target.value)}>
-                      {INSTRUMENTS.map(i => <option key={i.id} value={i.id}>{i.label}</option>)}
-                    </select>
+                {/* Amount range + currency */}
+                <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 7, padding: "10px 12px", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>💰 Amount</div>
+                  <div className="g3">
+                    <div className="fg0">
+                      <label className="lbl">Min Amount</label>
+                      <input className="inp" type="number" placeholder="0" value={form.amountMin||""} onChange={e => set("amountMin", Number(e.target.value))} />
+                    </div>
+                    <div className="fg0">
+                      <label className="lbl">Max / Target Amount *</label>
+                      <input className="inp" style={fieldStyle("amount")} type="number" placeholder="3000000" value={form.amount||""} onChange={e => set("amount", Number(e.target.value))} />
+                    </div>
+                    <div className="fg0">
+                      <label className="lbl">Currency</label>
+                      <select className="sel" style={fieldStyle("currency")} value={form.currency||"USD"} onChange={e => set("currency", e.target.value)}>
+                        {Object.entries(CURRENCIES.reduce((g: any, c) => { (g[c.group]=g[c.group]||[]).push(c); return g; }, {})).map(([grp, items]: any) => (
+                          <optgroup key={grp} label={grp}>{items.map((c: any) => <option key={c.id} value={c.id}>{c.id} — {c.label.split("—")[1]?.trim()||c.label}</option>)}</optgroup>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                {/* Token details — show if token-related round/instrument */}
+                {/* Instrument */}
+                <div className="fg0">
+                  <label className="lbl">Instrument / Structure</label>
+                  <div className="tw">
+                    {INSTRUMENTS.map(i => (
+                      <button key={i.id} title={i.desc}
+                        className={`tp${(form.instrument||"any") === i.id ? " on" : ""}`}
+                        onClick={() => set("instrument", i.id)}>
+                        {i.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Token details */}
                 <div className="g3">
                   <div className="fg0"><label className="lbl">Token Ticker</label><input className="inp" style={fieldStyle("token")} placeholder="FLOW" value={form.token||""} onChange={e => set("token", e.target.value)} /></div>
                   <div className="fg0">
@@ -3866,18 +4024,26 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                       {TOKEN_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                     </select>
                   </div>
-                  <div className="fg0"><label className="lbl">Currency</label><input className="inp" placeholder="USD" value={form.currency||"USD"} onChange={e => set("currency", e.target.value)} /></div>
+                  <div className="fg0">
+                    <label className="lbl">Token Exists?</label>
+                    <select className="sel" value={form.tokenExists||""} onChange={e => set("tokenExists", e.target.value)}>
+                      <option value="">—</option>
+                      <option value="yes">Yes — live</option>
+                      <option value="planned">Planned</option>
+                      <option value="no">No token</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Valuation */}
                 <div className="g2">
                   <div className="fg0"><label className="lbl">Valuation Cap / Pre-Money</label><input className="inp" type="number" placeholder="10000000" value={form.valuationCap||""} onChange={e => set("valuationCap", Number(e.target.value))} /></div>
-                  <div className="fg0"><label className="lbl">FDV (for token deals)</label><input className="inp" type="number" placeholder="50000000" value={form.fdv||""} onChange={e => set("fdv", Number(e.target.value))} /></div>
+                  <div className="fg0"><label className="lbl">FDV (token deals)</label><input className="inp" type="number" placeholder="50000000" value={form.fdv||""} onChange={e => set("fdv", Number(e.target.value))} /></div>
                 </div>
 
-                {/* Vesting schedule */}
+                {/* Vesting */}
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 7, padding: "10px 12px", marginBottom: 8 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>🔒 Vesting Schedule</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>🔒 Vesting / Lock-up <span style={{ fontWeight: 400, color: "var(--fg3)", fontSize: 11 }}>(leave blank if not applicable)</span></div>
                   <div className="g3">
                     <div className="fg0"><label className="lbl">Cliff (months)</label><input className="inp" type="number" placeholder="6" min="0" max="36" value={form.cliffMonths||""} onChange={e => set("cliffMonths", Number(e.target.value))} /></div>
                     <div className="fg0"><label className="lbl">Vesting (months)</label><input className="inp" type="number" placeholder="18" min="0" max="60" value={form.vestingMonths||""} onChange={e => set("vestingMonths", Number(e.target.value))} /></div>
@@ -3885,29 +4051,48 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   </div>
                 </div>
 
-                <div className="fg0"><label className="lbl">Project Name</label><input className="inp" style={fieldStyle("projectName")} placeholder="FlowBridge" value={form.projectName||""} onChange={e => set("projectName", e.target.value)} /></div>
-                <div className="fg0"><label className="lbl">Description</label><textarea className="ta" style={fieldStyle("description")} placeholder="What does the project do? What problem does it solve?" value={form.description||""} onChange={e => set("description", e.target.value)} /></div>
+                <div className="fg0"><label className="lbl">Project / Company Name</label><input className="inp" style={fieldStyle("projectName")} placeholder="FlowBridge" value={form.projectName||""} onChange={e => set("projectName", e.target.value)} /></div>
+                <div className="fg0"><label className="lbl">Description *</label><textarea className="ta" rows={3} style={fieldStyle("description")} placeholder="What does your project do? What problem does it solve? Why now?" value={form.description||""} onChange={e => set("description", e.target.value)} /></div>
+                <div className="fg0"><label className="lbl">Traction / Metrics</label><input className="inp" style={fieldStyle("traction")} placeholder="1200 waitlist, $850K TVL, 3 LOIs, 50K users" value={form.traction||""} onChange={e => set("traction", e.target.value)} /></div>
 
-                {/* Traction */}
-                <div className="fg0"><label className="lbl">Traction / Metrics</label><input className="inp" style={fieldStyle("traction")} placeholder="1200 waitlist, $850K TVL testnet, 3 LOIs" value={form.traction||""} onChange={e => set("traction", e.target.value)} /></div>
-
-                {/* Additional details */}
-                <div className="g2">
-                  <div className="fg0"><label className="lbl">Existing Investors</label><input className="inp" placeholder="Spartan Group, Animoca..." value={form.existingInvestors||""} onChange={e => set("existingInvestors", e.target.value)} /></div>
-                  <div className="fg0"><label className="lbl">Close Date</label><input className="inp" type="date" value={form.closeDate||""} onChange={e => set("closeDate", e.target.value)} /></div>
+                <div className="fg0">
+                  <label className="lbl">Ideal Investor Type <span style={{ fontWeight: 400, color: "var(--fg3)" }}>(multi-select)</span></label>
+                  <div className="tw">
+                    {INVESTOR_TYPES.map(t => (
+                      <button key={t.id} title={t.range}
+                        className={`tp${(form.idealInvestorTypes||[]).includes(t.id) ? " on" : ""}`}
+                        onClick={() => { const c = form.idealInvestorTypes||[]; set("idealInvestorTypes", c.includes(t.id) ? c.filter((x:string)=>x!==t.id) : [...c, t.id]); }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="g2">
-                  <div className="fg0"><label className="lbl">Deck URL</label><input className="inp" placeholder="https://docsend.com/..." value={form.deckUrl||""} onChange={e => set("deckUrl", e.target.value)} /></div>
+                  <div className="fg0"><label className="lbl">Existing Investors</label><input className="inp" placeholder="Spartan Group, Animoca..." value={form.existingInvestors||""} onChange={e => set("existingInvestors", e.target.value)} /></div>
+                  <div className="fg0"><label className="lbl">Close Deadline</label><input className="inp" type="date" value={form.closeDate||""} onChange={e => set("closeDate", e.target.value)} /></div>
+                </div>
+                <div className="g2">
+                  <div className="fg0"><label className="lbl">Pitch Deck URL</label><input className="inp" placeholder="https://docsend.com/..." value={form.deckUrl||""} onChange={e => set("deckUrl", e.target.value)} /></div>
                   <div className="fg0"><label className="lbl">Data Room URL</label><input className="inp" placeholder="https://..." value={form.dataroomUrl||""} onChange={e => set("dataroomUrl", e.target.value)} /></div>
                 </div>
 
-                {/* Boolean flags */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="fg0">
+                  <label className="lbl">Legal Jurisdiction</label>
+                  <select className="sel" value={form.jurisdiction||""} onChange={e => set("jurisdiction", e.target.value)}>
+                    <option value="">— Not specified —</option>
+                    {JURISDICTIONS.map(j => <option key={j.id} value={j.id}>{j.label}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {[
                     { key: "leadRequired", label: "⚡ Lead investor sought" },
-                    { key: "proRata",      label: "📋 Pro-rata rights offered" },
+                    { key: "proRata",      label: "📋 Pro-rata offered" },
                     { key: "kycRequired",  label: "🪪 KYC required" },
+                    { key: "boardSeatOk",  label: "🪑 Board seat OK" },
+                    { key: "audited",      label: "✅ Audited" },
+                    { key: "doxxed",       label: "👤 Doxxed team" },
                   ].map(f => (
                     <button key={f.key} className={`tp${form[f.key] ? " on" : ""}`} onClick={() => set(f.key, !form[f.key])}>
                       {f.label}
@@ -3915,26 +4100,27 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   ))}
                 </div>
 
-                {/* Geo restriction */}
                 <div className="fg0">
-                  <label className="lbl">Geo Restrictions (leave empty = global)</label>
+                  <label className="lbl">Accepted Investor Geos <span style={{ fontWeight: 400, color: "var(--fg3)" }}>(empty = global)</span></label>
                   <div className="tw">{GEOS.map(g => (
                     <button key={g.id} className={`tp${(form.geoRestrictions||[]).includes(g.id) ? " on" : ""}`}
-                      onClick={() => { const c = form.geoRestrictions||[]; set("geoRestrictions", c.includes(g.id) ? c.filter((x: string)=>x!==g.id) : [...c, g.id]); }}>
+                      onClick={() => { const c = form.geoRestrictions||[]; set("geoRestrictions", c.includes(g.id) ? c.filter((x:string)=>x!==g.id) : [...c, g.id]); }}>
                       {g.label}
                     </button>
                   ))}</div>
                 </div>
 
-                <div className="fg0"><label className="lbl">Notes / Terms</label><textarea className="ta" style={fieldStyle("terms")} placeholder="Additional terms, co-invest notes, conditions..." value={form.terms||""} onChange={e => set("terms", e.target.value)} /></div>
+                <div className="fg0"><label className="lbl">Additional Notes / Terms</label><textarea className="ta" style={fieldStyle("terms")} placeholder="Anything else: co-invest welcome, board seat needed, specific ecosystem..." value={form.terms||""} onChange={e => set("terms", e.target.value)} /></div>
               </>)}
 
-              {/* DEAL — INVESTING mode (Deploy Capital) v2 */}
+                            {/* ── DEPLOYING (💰 I have capital to deploy) ── */}
               {type === "deal" && props.dealMode === "investing" && (<>
-                {/* Identity */}
+
                 <div className="fg0">
                   <label className="lbl">Investor / Fund Name *</label>
-                  <input className="inp" style={fieldStyle("title")} placeholder="e.g. Spartan Capital · John Doe Angel" value={form.title} onChange={e => set("title", e.target.value)} autoFocus />
+                  <input className="inp" style={fieldStyle("title")} autoFocus
+                    placeholder="e.g. Spartan Capital · John Doe Angel"
+                    value={form.title||""} onChange={e => set("title", e.target.value)} />
                 </div>
 
                 <div className="g2">
@@ -3947,37 +4133,68 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   </div>
                   <div className="fg0">
                     <label className="lbl">Status</label>
-                    <select className="sel" value={form.status||"open"} onChange={e => set("status", e.target.value)}>
-                      {DEAL_STATUSES_INVESTING.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                    <select className="sel" value={form.status||"active"} onChange={e => set("status", e.target.value)}>
+                      {DEAL_STATUSES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label} — {s.desc}</option>)}
                     </select>
                   </div>
                 </div>
 
                 <div className="fg0">
                   <label className="lbl">Strategy & About</label>
-                  <textarea className="ta" style={fieldStyle("description")} rows={3} placeholder="Who you are, what sectors you focus on, value-add beyond capital, portfolio companies..." value={form.description||""} onChange={e => set("description", e.target.value)} />
+                  <textarea className="ta" rows={3} style={fieldStyle("description")}
+                    placeholder="Who you are, what sectors you focus on, value-add beyond capital, notable portfolio..."
+                    value={form.description||""} onChange={e => set("description", e.target.value)} />
                 </div>
 
-                {/* Ticket size */}
+                {/* Check size + currency */}
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 7, padding: "10px 12px", marginBottom: 8 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>💰 Check Size</div>
-                  <div className="g2">
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>💰 Check Size per Deal</div>
+                  <div className="g3">
                     <div className="fg0">
-                      <label className="lbl">Min Ticket (USD)</label>
+                      <label className="lbl">Min Ticket</label>
                       <input className="inp" type="number" style={fieldStyle("minTicket")} placeholder="25000" step="1000" value={form.minTicket||""} onChange={e => set("minTicket", Number(e.target.value))} />
                       <div style={{ fontSize: 10.5, color: "var(--fg3)", marginTop: 2 }}>From $0.10 — no minimum</div>
                     </div>
                     <div className="fg0">
-                      <label className="lbl">Max Ticket (USD)</label>
+                      <label className="lbl">Max Ticket</label>
                       <input className="inp" type="number" style={fieldStyle("maxTicket")} placeholder="500000" step="1000" value={form.maxTicket||""} onChange={e => set("maxTicket", Number(e.target.value))} />
                       <div style={{ fontSize: 10.5, color: "var(--fg3)", marginTop: 2 }}>0 = unlimited</div>
+                    </div>
+                    <div className="fg0">
+                      <label className="lbl">Currency</label>
+                      <select className="sel" value={form.currency||"USD"} onChange={e => set("currency", e.target.value)}>
+                        {Object.entries(CURRENCIES.reduce((g: any, c) => { (g[c.group]=g[c.group]||[]).push(c); return g; }, {})).map(([grp, items]: any) => (
+                          <optgroup key={grp} label={grp}>{items.map((c: any) => <option key={c.id} value={c.id}>{c.id}</option>)}</optgroup>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
 
-                {/* Preferred instruments — multi-select */}
+                {/* What I deploy into */}
                 <div className="fg0">
-                  <label className="lbl">Preferred Instruments <span style={{ fontWeight: 400, color: "var(--fg3)" }}>(select all that apply)</span></label>
+                  <label className="lbl">I deploy into <span style={{ fontWeight: 400, color: "var(--fg3)" }}>(categories)</span></label>
+                  <div style={{ marginBottom: 6 }}>
+                    {Object.entries(DEAL_ROUNDS.reduce((g: any, r) => { (g[r.group]=g[r.group]||[]).push(r); return g; }, {})).map(([grp, items]: any) => (
+                      <div key={grp} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>{grp}</div>
+                        <div className="tw">
+                          {items.map((r: any) => (
+                            <button key={r.id} title={r.desc}
+                              className={`tp${(form.preferredStages||[]).includes(r.id) ? " on" : ""}`}
+                              onClick={() => { const c = form.preferredStages||[]; set("preferredStages", c.includes(r.id) ? c.filter((x:string)=>x!==r.id) : [...c, r.id]); }}>
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preferred instruments */}
+                <div className="fg0">
+                  <label className="lbl">Preferred Instruments <span style={{ fontWeight: 400, color: "var(--fg3)" }}>(multi-select)</span></label>
                   <div className="tw">
                     {INSTRUMENTS.map(i => (
                       <button key={i.id} title={i.desc}
@@ -3989,31 +4206,14 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   </div>
                 </div>
 
-                {/* Preferred stages — grouped */}
-                <div className="fg0">
-                  <label className="lbl">Preferred Stages</label>
-                  {Object.entries(DEAL_ROUNDS.reduce((g: any, r) => { (g[r.group]=g[r.group]||[]).push(r); return g; }, {})).map(([grp, items]: any) => (
-                    <div key={grp} style={{ marginBottom: 6 }}>
-                      <div style={{ fontSize: 10, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 3 }}>{grp}</div>
-                      <div className="tw">
-                        {items.map((r: any) => (
-                          <button key={r.id} className={`tp${(form.preferredStages||[]).includes(r.id) ? " on" : ""}`}
-                            onClick={() => { const c = form.preferredStages||[]; set("preferredStages", c.includes(r.id) ? c.filter((x:string)=>x!==r.id) : [...c,r.id]); }}>
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
                 {/* Preferred verticals */}
                 <div className="fg0">
                   <label className="lbl">Preferred Verticals</label>
                   <div className="tw">
                     {VERTICALS.map(v => (
-                      <button key={v.id} className={`tp${(form.preferredVerticals||[]).includes(v.id) ? " on" : ""}`}
-                        onClick={() => { const c = form.preferredVerticals||[]; set("preferredVerticals", c.includes(v.id) ? c.filter((x:string)=>x!==v.id) : [...c,v.id]); }}>
+                      <button key={v.id}
+                        className={`tp${(form.preferredVerticals||[]).includes(v.id) ? " on" : ""}`}
+                        onClick={() => { const c = form.preferredVerticals||[]; set("preferredVerticals", c.includes(v.id) ? c.filter((x:string)=>x!==v.id) : [...c, v.id]); }}>
                         {v.label}
                       </button>
                     ))}
@@ -4025,8 +4225,9 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   <label className="lbl">Preferred Geographies</label>
                   <div className="tw">
                     {GEOS.map(g => (
-                      <button key={g.id} className={`tp${(form.preferredGeos||[]).includes(g.id) ? " on" : ""}`}
-                        onClick={() => { const c = form.preferredGeos||[]; set("preferredGeos", c.includes(g.id) ? c.filter((x:string)=>x!==g.id) : [...c,g.id]); }}>
+                      <button key={g.id}
+                        className={`tp${(form.preferredGeos||[]).includes(g.id) ? " on" : ""}`}
+                        onClick={() => { const c = form.preferredGeos||[]; set("preferredGeos", c.includes(g.id) ? c.filter((x:string)=>x!==g.id) : [...c, g.id]); }}>
                         {g.label}
                       </button>
                     ))}
@@ -4035,7 +4236,7 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
 
                 {/* Terms preferences */}
                 <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 7, padding: "10px 12px", marginBottom: 8 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>📋 Terms Preferences <span style={{ fontWeight: 400, color: "var(--fg3)", fontSize: 11 }}>(optional — helps synergy scoring)</span></div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg2)", marginBottom: 8 }}>📋 Terms Preferences <span style={{ fontWeight: 400, color: "var(--fg3)", fontSize: 11 }}>(optional — improves synergy matching)</span></div>
                   <div className="g3">
                     <div className="fg0"><label className="lbl">Max Cliff (months)</label><input className="inp" type="number" placeholder="12" min="0" max="36" value={form.maxCliffMonths||""} onChange={e => set("maxCliffMonths", Number(e.target.value))} /></div>
                     <div className="fg0"><label className="lbl">Min Vesting (months)</label><input className="inp" type="number" placeholder="12" min="0" max="60" value={form.minVestingMonths||""} onChange={e => set("minVestingMonths", Number(e.target.value))} /></div>
@@ -4047,13 +4248,28 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                   </div>
                 </div>
 
-                {/* Boolean flags */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {/* Value-add */}
+                <div className="fg0">
+                  <label className="lbl">Value-add I provide</label>
+                  <div className="tw">
+                    {VALUE_ADD.map(v => (
+                      <button key={v.id}
+                        className={`tp${(form.valueAdd||[]).includes(v.id) ? " on" : ""}`}
+                        onClick={() => { const c = form.valueAdd||[]; set("valueAdd", c.includes(v.id) ? c.filter((x:string)=>x!==v.id) : [...c, v.id]); }}>
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Flags */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {[
                     { key: "coInvestOk",  label: "🤝 Co-invest OK" },
                     { key: "leadOnly",    label: "⚡ Lead rounds only" },
                     { key: "kycOk",       label: "🪪 KYC / AML ready" },
                     { key: "proRataReq",  label: "📋 Pro-rata required" },
+                    { key: "boardSeatReq",label: "🪑 Board seat required" },
                   ].map(f => (
                     <button key={f.key} className={`tp${form[f.key] ? " on" : ""}`} onClick={() => set(f.key, !form[f.key])}>
                       {f.label}
@@ -4063,11 +4279,13 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
 
                 <div className="fg0">
                   <label className="lbl">Additional Criteria / Notes</label>
-                  <textarea className="ta" style={fieldStyle("terms")} rows={2} placeholder="Must have token, no KYC required, B2B SaaS focus, known team only, board seat needed..." value={form.terms||""} onChange={e => set("terms", e.target.value)} />
+                  <textarea className="ta" rows={2} style={fieldStyle("terms")}
+                    placeholder="Must have token, known team, B2B focus, open to syndicate lead, board seat, specific ecosystem..."
+                    value={form.terms||""} onChange={e => set("terms", e.target.value)} />
                 </div>
               </>)}
 
-              {/* LF POST */}
+                            {/* LF POST */}
               {type === "lf" && (<>
                 <div className="g2">
                   <div className="fg0">
@@ -4680,7 +4898,7 @@ function EditModal({ type, entity, onClose, onSave, contacts, companies, project
             <div className="fg0"><label className="lbl">Deal Title</label><input className="inp" value={form.title || ""} onChange={e => set("title", e.target.value)} autoFocus /></div>
             <div className="g2">
               <div className="fg0"><label className="lbl">Round</label><select className="sel" value={form.round || "seed"} onChange={e => set("round", e.target.value)}>{DEAL_ROUNDS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}</select></div>
-              <div className="fg0"><label className="lbl">Status</label><select className="sel" value={form.status || "open"} onChange={e => set("status", e.target.value)}>{DEAL_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+              <div className="fg0"><label className="lbl">Status</label><select className="sel" value={form.status || "active"} onChange={e => set("status", e.target.value)}>{DEAL_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
             </div>
             <div className="g3">
               <div className="fg0"><label className="lbl">Amount (USD)</label><input className="inp" type="number" value={form.amount || ""} onChange={e => set("amount", Number(e.target.value))} /></div>
