@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 
+const APP_VERSION = "v4.6";
+
 /* ═══════════════════════════════════════════════════════════════
    W3 NET v3.3  ·  Web3 Networking Hub
    
@@ -78,7 +80,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px
 .page{flex:1;overflow-y:auto;padding:20px 22px 40px;}
 .page::-webkit-scrollbar{width:4px;}
 .page::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-.sb-logo{padding:14px 13px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;}
+/* sb-logo height = topbar height exactly (52px) so border lines up perfectly */
+.sb-logo{height:52px;min-height:52px;padding:0 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;}
 .sb-mark{width:28px;height:28px;background:var(--primary);border-radius:var(--r2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .sb-mark-t{color:var(--pri-fg);font-size:10px;font-weight:700;letter-spacing:-.3px;}
 .sb-name{font-size:13.5px;font-weight:600;letter-spacing:-.2px;}
@@ -1713,23 +1716,652 @@ function ProjectsPage({ projects, contacts, companies, allVotes, onVote, current
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   SYNERGY ENGINE v1.0  —  Web3 Deal-Investor Matching
+   ─────────────────────────────────────────────────────────────────
+   Algorithm: Weighted Composite Score (Jaccard + rule-based)
+   Based on: Gale-Shapley stable matching principles,
+             AngelList/YC matching weights research,
+             Web3 deal practice data (Messari/The Block 2024)
+
+   Score Formula:
+   S = 0.35 * vertical_jaccard
+     + 0.30 * stage_match
+     + 0.20 * ticket_fit
+     + 0.10 * geo_jaccard
+     + 0.05 * instrument_match
+   ══════════════════════════════════════════════════════════════════ */
+
+function jaccardSimilarity(a: string[], b: string[]): number {
+  if (!a?.length || !b?.length) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const intersection = [...setA].filter(x => setB.has(x)).length;
+  const union = new Set([...setA, ...setB]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function ticketFit(amount: number, minTicket: number, maxTicket: number): number {
+  // amount = what fundraiser is raising (total round)
+  // investor check = minTicket..maxTicket per deal
+  // Score: does investor's typical check make sense for this round?
+  if (!amount || amount <= 0) return 0.5; // unknown → neutral
+  const min = minTicket || 0;
+  const max = maxTicket > 0 ? maxTicket : Infinity;
+  // Investor check range: assume they deploy 5-25% of round as one check
+  const reasonableMin = amount * 0.02;
+  const reasonableMax = amount * 0.50;
+  // Overlap between [min,max] and [reasonableMin,reasonableMax]
+  const overlapStart = Math.max(min, reasonableMin);
+  const overlapEnd = Math.min(max, reasonableMax);
+  if (overlapStart <= overlapEnd) {
+    // Overlap exists — score by how well centered
+    const overlapRatio = (overlapEnd - overlapStart) / (reasonableMax - reasonableMin + 1);
+    return Math.min(1, 0.4 + overlapRatio * 0.6);
+  }
+  // No overlap but close: partial score
+  if (max < reasonableMin) return max / reasonableMin * 0.4;
+  if (min > reasonableMax) return reasonableMax / min * 0.3;
+  return 0.2;
+}
+
+function instrumentMatch(round: string, instrument: string): number {
+  if (!instrument || instrument === "any") return 1.0;
+  const tokenRounds = ["pre-tge", "tge", "public-sale", "private-sale", "pre-seed"];
+  const equityRounds = ["series-a", "series-b", "strategic"];
+  const safeRounds = ["angels", "pre-seed", "seed"];
+  const otcRounds = ["otc"];
+  const grantRounds = ["grants", "ecosystem-fund"];
+  if (instrument === "token" && tokenRounds.includes(round)) return 1.0;
+  if (instrument === "equity" && equityRounds.includes(round)) return 1.0;
+  if (instrument === "safe" && safeRounds.includes(round)) return 1.0;
+  if (instrument === "otc" && otcRounds.includes(round)) return 1.0;
+  if (instrument === "lp" && grantRounds.includes(round)) return 0.7;
+  // Partial matches
+  if (instrument === "token" && safeRounds.includes(round)) return 0.6; // SAFE+warrant common
+  if (instrument === "safe" && tokenRounds.includes(round)) return 0.5;
+  if (instrument === "equity" && safeRounds.includes(round)) return 0.4;
+  return 0.3;
+}
+
+interface SynergyScore {
+  total: number;           // 0–100
+  vertical: number;        // 0–1
+  stage: number;           // 0–1
+  ticket: number;          // 0–1
+  geo: number;             // 0–1
+  instrument: number;      // 0–1
+  tier: "hot" | "good" | "potential" | "none";
+  label: string;
+  color: string;
+  missingData: string[];
+}
+
+function computeSynergy(fundraiser: any, investor: any): SynergyScore {
+  const missingData: string[] = [];
+
+  // Vertical match: fundraiser tags vs investor preferredVerticals
+  const fVerticals = (fundraiser.tags || []).filter((t: string) =>
+    VERTICALS.find(v => v.id === t)
+  );
+  const iVerticals = investor.preferredVerticals || [];
+  if (!fVerticals.length) missingData.push("fundraiser verticals");
+  if (!iVerticals.length) missingData.push("investor verticals");
+  const vertScore = jaccardSimilarity(fVerticals, iVerticals);
+
+  // Stage match: fundraiser.round in investor.preferredStages
+  const fRound = fundraiser.round || "";
+  const iStages = investor.preferredStages || [];
+  if (!fRound) missingData.push("fundraiser stage");
+  if (!iStages.length) missingData.push("investor stages");
+  const stageScore = iStages.length === 0 ? 0.5 :
+    iStages.includes(fRound) ? 1.0 :
+    // Adjacent stage partial match
+    (() => {
+      const order = ["angels","pre-seed","seed","strategic","private-sale","series-a","series-b","pre-tge","tge","public-sale","otc","grants","ecosystem-fund"];
+      const fi = order.indexOf(fRound);
+      const closest = iStages.reduce((best: number, s: string) => {
+        const si = order.indexOf(s);
+        return Math.min(best, Math.abs(fi - si));
+      }, 99);
+      return closest === 1 ? 0.5 : closest === 2 ? 0.25 : 0;
+    })();
+
+  // Ticket fit
+  const fAmount = fundraiser.amount || 0;
+  const iMin = investor.minTicket || 0;
+  const iMax = investor.maxTicket || 0;
+  if (!fAmount) missingData.push("fundraiser amount");
+  if (!iMin && !iMax) missingData.push("investor ticket range");
+  const tktScore = ticketFit(fAmount, iMin, iMax);
+
+  // Geo match: fundraiser geo tags vs investor preferredGeos
+  const fGeos = (fundraiser.tags || []).filter((t: string) => GEOS.find(g => g.id === t));
+  const iGeos = investor.preferredGeos || [];
+  // "global" is wildcard
+  const geoScore = iGeos.includes("global") || fGeos.includes("global") ? 1.0 :
+    !fGeos.length || !iGeos.length ? 0.5 :
+    jaccardSimilarity(fGeos, iGeos);
+
+  // Instrument match
+  const iInstrument = investor.instrument || "any";
+  const instrScore = instrumentMatch(fRound, iInstrument);
+
+  // Weighted composite
+  const total = Math.round(
+    (vertScore * 0.35 +
+     stageScore * 0.30 +
+     tktScore  * 0.20 +
+     geoScore  * 0.10 +
+     instrScore * 0.05) * 100
+  );
+
+  // Confidence penalty: each missing data point → -5 pts
+  const confPenalty = Math.min(25, missingData.length * 5);
+  const finalScore = Math.max(0, total - confPenalty);
+
+  const tier: SynergyScore["tier"] =
+    finalScore >= 70 ? "hot" :
+    finalScore >= 50 ? "good" :
+    finalScore >= 30 ? "potential" : "none";
+
+  const label = tier === "hot" ? "🔥 Hot Match" :
+    tier === "good" ? "✅ Good Match" :
+    tier === "potential" ? "💡 Potential" : "—";
+
+  const color = tier === "hot" ? "var(--warn-fg)" :
+    tier === "good" ? "var(--tf-g)" :
+    tier === "potential" ? "var(--acc)" : "var(--fg3)";
+
+  return { total: finalScore, vertical: vertScore, stage: stageScore,
+    ticket: tktScore, geo: geoScore, instrument: instrScore,
+    tier, label, color, missingData };
+}
+
+/* AI-powered synergy reasoning — calls Anthropic API */
+async function fetchSynergyInsight(fundraiser: any, investor: any, score: SynergyScore): Promise<string> {
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: `You are a Web3 deal analyst. Analyze this fundraiser-investor match and give a SHORT (3-4 sentences) deal insight in English. Be specific about what aligns and what doesn't. Be direct and practical — no fluff.
+
+FUNDRAISER: ${JSON.stringify({
+  title: fundraiser.title,
+  round: fundraiser.round,
+  amount: fundraiser.amount,
+  verticals: (fundraiser.tags||[]).filter((t:string)=>VERTICALS.find(v=>v.id===t)),
+  geos: (fundraiser.tags||[]).filter((t:string)=>GEOS.find(g=>g.id===t)),
+  description: fundraiser.description?.slice(0,200),
+})}
+
+INVESTOR: ${JSON.stringify({
+  title: investor.title,
+  minTicket: investor.minTicket,
+  maxTicket: investor.maxTicket,
+  preferredStages: investor.preferredStages,
+  preferredVerticals: investor.preferredVerticals,
+  preferredGeos: investor.preferredGeos,
+  instrument: investor.instrument,
+  description: investor.description?.slice(0,200),
+})}
+
+MATCH SCORE: ${score.total}% (vertical: ${Math.round(score.vertical*100)}%, stage: ${Math.round(score.stage*100)}%, ticket: ${Math.round(score.ticket*100)}%, geo: ${Math.round(score.geo*100)}%)
+
+Reply with ONLY the analysis paragraph, no headers, no bullet points.`
+        }],
+      }),
+    });
+    const data = await resp.json();
+    return data.content?.[0]?.text || "Unable to generate insight.";
+  } catch {
+    return "AI insight unavailable.";
+  }
+}
+
+/* ── Synergy Card Component ──────────────────────────────────────── */
+function SynergyCard({ fundraiser, investor, onOpen }: { fundraiser: any; investor: any; onOpen: (type: string, id: string) => void }) {
+  const score = useMemo(() => computeSynergy(fundraiser, investor), [fundraiser, investor]);
+  const [insight, setInsight] = useState<string | null>(null);
+  const [loadingInsight, setLoadingInsight] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const loadInsight = async () => {
+    if (insight) { setExpanded(e => !e); return; }
+    setExpanded(true);
+    setLoadingInsight(true);
+    const text = await fetchSynergyInsight(fundraiser, investor, score);
+    setInsight(text);
+    setLoadingInsight(false);
+  };
+
+  const ScoreBar = ({ value, label, color }: { value: number; label: string; color: string }) => (
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, marginBottom: 2 }}>
+        <span style={{ color: "var(--fg3)" }}>{label}</span>
+        <span style={{ fontFamily: "var(--mono)", color }}>{Math.round(value * 100)}%</span>
+      </div>
+      <div style={{ height: 3, background: "var(--bg3)", borderRadius: 2 }}>
+        <div style={{ height: "100%", width: `${value * 100}%`, background: color, borderRadius: 2, transition: "width .4s" }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="card card-p" style={{ marginBottom: 8 }}>
+      {/* Header: two sides */}
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+        {/* Fundraiser side */}
+        <div
+          style={{ flex: 1, background: "var(--bg2)", borderRadius: 8, padding: "8px 10px", cursor: "pointer", border: "1px solid var(--border)" }}
+          onClick={() => onOpen("deal", fundraiser.id)}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, color: "oklch(0.55 0.14 240)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 3 }}>📈 Fundraiser</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fundraiser.title}</div>
+          <div style={{ fontSize: 11.5, color: "var(--fg3)" }}>
+            {fundraiser.round ? DEAL_ROUNDS.find(r => r.id === fundraiser.round)?.label : "—"}
+            {fundraiser.amount > 0 && ` · ${fv(fundraiser.amount)}`}
+          </div>
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 4 }}>
+            {(fundraiser.tags || []).filter((t: string) => VERTICALS.find(v => v.id === t)).slice(0, 3).map((t: string) => <Tag key={t} id={t} />)}
+          </div>
+        </div>
+
+        {/* Match score center */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "4px 6px", minWidth: 56 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--mono)", color: score.color, lineHeight: 1 }}>
+            {score.total}
+          </div>
+          <div style={{ fontSize: 9, color: "var(--fg3)", textAlign: "center" }}>score</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: score.color, whiteSpace: "nowrap" }}>{score.label}</div>
+        </div>
+
+        {/* Investor side */}
+        <div
+          style={{ flex: 1, background: "var(--bg2)", borderRadius: 8, padding: "8px 10px", cursor: "pointer", border: "1px solid var(--border)" }}
+          onClick={() => onOpen("deal", investor.id)}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tf-g)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 3 }}>💰 Investor</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{investor.title}</div>
+          <div style={{ fontSize: 11.5, color: "var(--fg3)" }}>
+            {investor.minTicket > 0 ? `${fv(investor.minTicket)}${investor.maxTicket > 0 ? `–${fv(investor.maxTicket)}` : "+"}` : "Any size"}
+            {investor.instrument && investor.instrument !== "any" && ` · ${investor.instrument.toUpperCase()}`}
+          </div>
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 4 }}>
+            {(investor.preferredVerticals || []).slice(0, 3).map((t: string) => <Tag key={t} id={t} />)}
+          </div>
+        </div>
+      </div>
+
+      {/* Score breakdown bars */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px", marginBottom: 8 }}>
+        <ScoreBar value={score.vertical} label="Vertical" color="oklch(0.55 0.14 240)" />
+        <ScoreBar value={score.stage} label="Stage" color="oklch(0.55 0.18 150)" />
+        <ScoreBar value={score.ticket} label="Ticket Fit" color="oklch(0.55 0.14 80)" />
+        <ScoreBar value={score.geo} label="Geo" color="oklch(0.55 0.10 300)" />
+      </div>
+
+      {/* Missing data warning */}
+      {score.missingData.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--warn-fg)", background: "var(--warn-bg)", border: "1px solid var(--warn-border)", borderRadius: 5, padding: "4px 8px", marginBottom: 8 }}>
+          ⚠ Add more data for better matching: {score.missingData.join(", ")}
+        </div>
+      )}
+
+      {/* AI insight toggle */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          className="btn btn-sm"
+          style={{ fontSize: 11.5, flex: 1, justifyContent: "center" }}
+          onClick={loadInsight}
+        >
+          {loadingInsight
+            ? <><svg style={{ animation: "spin 0.8s linear infinite" }} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg> AI analyzing…</>
+            : expanded ? "▲ Hide AI Insight" : "✦ AI Insight"
+          }
+        </button>
+      </div>
+
+      {expanded && insight && (
+        <div style={{ marginTop: 8, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontSize: 12.5, color: "var(--fg2)", lineHeight: 1.65 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--acc)", display: "block", marginBottom: 4 }}>✦ AI DEAL INSIGHT</span>
+          {insight}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Synergy Tab ──────────────────────────────────────────────────── */
+function SynergyTab({ deals, onOpen }: { deals: any[]; onOpen: (type: string, id: string) => void }) {
+  const fundraisers = deals.filter(d => d.dealMode !== "investing" && d.status === "open");
+  const investors = deals.filter(d => d.dealMode === "investing" && d.status === "open");
+
+  const [minScore, setMinScore] = useState<number>(30);
+  const [sortBy, setSortBy] = useState<"score" | "stage" | "vertical">("score");
+  const [filterTier, setFilterTier] = useState<"all" | "hot" | "good" | "potential">("all");
+  const [aiScanDone, setAiScanDone] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  // Compute all pairs above threshold
+  const pairs = useMemo(() => {
+    const result: { fundraiser: any; investor: any; score: SynergyScore }[] = [];
+    for (const f of fundraisers) {
+      for (const inv of investors) {
+        const score = computeSynergy(f, inv);
+        if (score.total >= minScore) {
+          result.push({ fundraiser: f, investor: inv, score });
+        }
+      }
+    }
+    return result.sort((a, b) => {
+      if (sortBy === "score") return b.score.total - a.score.total;
+      if (sortBy === "stage") return b.score.stage - a.score.stage;
+      if (sortBy === "vertical") return b.score.vertical - a.score.vertical;
+      return 0;
+    }).filter(p =>
+      filterTier === "all" ? true :
+      filterTier === "hot" ? p.score.tier === "hot" :
+      filterTier === "good" ? p.score.tier === "good" :
+      p.score.tier === "potential"
+    );
+  }, [fundraisers, investors, minScore, sortBy, filterTier]);
+
+  const hotCount = pairs.filter(p => p.score.tier === "hot").length;
+  const goodCount = pairs.filter(p => p.score.tier === "good").length;
+
+  // No deals state
+  if (fundraisers.length === 0 && investors.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🤝</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Create deals to see Synergies</div>
+        <div style={{ fontSize: 13, color: "var(--fg3)", maxWidth: 340, lineHeight: 1.6 }}>
+          Add at least one <strong>Fundraising</strong> deal (project seeking capital) and one <strong>Investing</strong> deal (investor deploying capital).
+          The synergy engine will automatically match them by verticals, stage, ticket size, geo, and instrument.
+        </div>
+      </div>
+    );
+  }
+  if (fundraisers.length === 0 || investors.length === 0) {
+    const missing = fundraisers.length === 0 ? "Fundraising deal" : "Investing deal";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+        <div style={{ fontSize: 36, marginBottom: 10 }}>⚡️</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Almost there!</div>
+        <div style={{ fontSize: 13, color: "var(--fg3)", maxWidth: 320, lineHeight: 1.6 }}>
+          You need at least one <strong>{missing}</strong> to generate synergy matches.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Stats bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[
+          { label: "🔥 Hot", count: hotCount, color: "var(--warn-fg)", bg: "var(--warn-bg)", border: "var(--warn-border)" },
+          { label: "✅ Good", count: goodCount, color: "var(--tf-g)", bg: "var(--ok-bg)", border: "var(--ok-border)" },
+          { label: "📈 Fundraisers", count: fundraisers.length, color: "oklch(0.55 0.14 240)", bg: "var(--bg2)", border: "var(--border)" },
+          { label: "💰 Investors", count: investors.length, color: "var(--tf-g)", bg: "var(--bg2)", border: "var(--border)" },
+        ].map(s => (
+          <div key={s.label} style={{ flex: 1, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 7, padding: "7px 10px", textAlign: "center" }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.count}</div>
+            <div style={{ fontSize: 10.5, color: "var(--fg3)", marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Algorithm explainer */}
+      <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 7, padding: "9px 12px", marginBottom: 12, fontSize: 11.5, color: "var(--fg2)", lineHeight: 1.55 }}>
+        <strong style={{ color: "var(--fg)" }}>Synergy Score™</strong> = Vertical match (35%) + Stage fit (30%) + Ticket size (20%) + Geo (10%) + Instrument (5%) · Confidence-adjusted · Click <em>AI Insight</em> for deal analysis
+      </div>
+
+      {/* Filters */}
+      <div className="fb" style={{ marginBottom: 10, flexWrap: "wrap", gap: 5 }}>
+        <span className="fb-lbl">Filter:</span>
+        {[
+          { id: "all", label: "All matches" },
+          { id: "hot", label: "🔥 Hot only" },
+          { id: "good", label: "✅ Good+" },
+          { id: "potential", label: "💡 Potential" },
+        ].map(f => (
+          <button key={f.id} className={`fp${filterTier === f.id ? " on" : ""}`}
+            onClick={() => setFilterTier(f.id as any)}>{f.label}</button>
+        ))}
+        <span className="fb-lbl" style={{ marginLeft: 6 }}>Sort:</span>
+        {[
+          { id: "score", label: "Score" },
+          { id: "vertical", label: "Vertical" },
+          { id: "stage", label: "Stage" },
+        ].map(s => (
+          <button key={s.id} className={`fp${sortBy === s.id ? " on" : ""}`}
+            onClick={() => setSortBy(s.id as any)}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* Match pairs */}
+      {pairs.length === 0 ? (
+        <div className="empty">
+          <div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div>
+          <div className="empty-t">No matches above {minScore}% threshold</div>
+          <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 4 }}>Try adding more details to your deals (verticals, stage, ticket size)</div>
+        </div>
+      ) : (
+        pairs.map((p, i) => (
+          <SynergyCard
+            key={`${p.fundraiser.id}-${p.investor.id}`}
+            fundraiser={p.fundraiser}
+            investor={p.investor}
+            onOpen={onOpen}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
-  const [fltStatus, setFltStatus] = useState(null); const [q, setQ] = useState("");
+  const [tab, setTab] = useState("fundraising"); // "fundraising" | "investing" | "synergy"
+  const [fltStatus, setFltStatus] = useState(null);
+  const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
-  const list = useMemo(() => deals.filter(d => (!q || d.title.toLowerCase().includes(q.toLowerCase())) && (!fltStatus || d.status === fltStatus)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [deals, q, fltStatus]);
+  const [creatingType, setCreatingType] = useState("fundraising");
+
+  // Fundraising = проекты ищут инвестиции (стандартные deals)
+  const fundraisingDeals = useMemo(() =>
+    deals.filter(d => d.dealMode !== "investing"),
+    [deals]
+  );
+  // Investing = инвесторы хотят вложить капитал
+  const investingDeals = useMemo(() =>
+    deals.filter(d => d.dealMode === "investing"),
+    [deals]
+  );
+
+  const activeList = tab === "fundraising" ? fundraisingDeals : investingDeals;
+  const filtered = useMemo(() =>
+    activeList
+      .filter(d =>
+        (!q || d.title?.toLowerCase().includes(q.toLowerCase()) ||
+          d.description?.toLowerCase().includes(q.toLowerCase())) &&
+        (!fltStatus || d.status === fltStatus)
+      )
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [activeList, q, fltStatus]
+  );
+
   return (
     <div>
       <div className="ph">
-        <div><div className="ph-t">Deals</div><div className="ph-s">{deals.length} total · {deals.filter(d => d.status === "open").length} open</div></div>
-        <button className="btn btn-p" onClick={() => setCreating(true)}><I n="plus" s={13} /> Add Deal</button>
+        <div>
+          <div className="ph-t">Deals</div>
+          <div className="ph-s">{fundraisingDeals.length} fundraising · {investingDeals.length} investing</div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {tab !== "synergy" && (
+            <button className="btn btn-p" onClick={() => { setCreatingType(tab === "investing" ? "investing" : "fundraising"); setCreating(true); }}>
+              <I n="plus" s={13} /> {tab === "investing" ? "Deploy Capital" : "Add Deal"}
+            </button>
+          )}
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 7, marginBottom: 14 }}><div style={{ position: "relative", flex: 1, maxWidth: 340 }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={13} c="var(--fg3)" /></span><input className="srch-in" style={{ paddingLeft: 27, width: "100%" }} value={q} onChange={e => setQ(e.target.value)} placeholder="Search deals..." /></div></div>
-      <div className="fb" style={{ marginBottom: 14 }}><span className="fb-lbl">Status:</span>{DEAL_STATUSES.map(s => <button key={s.id} className={`fp${fltStatus === s.id ? " on" : ""}`} onClick={() => setFltStatus(fltStatus === s.id ? null : s.id)}>{s.label}</button>)}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {list.map(d => { const rnd = roundObj(d.round); const st = DEAL_STATUSES.find(s => s.id === d.status) || DEAL_STATUSES[0]; const auth = contacts.find(c => c.id === d.createdBy); return (<div key={d.id} className="card card-p card-hover" onClick={() => onOpenEntity("deal", d.id)}><div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}><div style={{ width: 3, background: "oklch(0.55 0.14 240)", borderRadius: 2, alignSelf: "stretch", minHeight: 40, flexShrink: 0 }} /><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, flexWrap: "wrap" }}><span style={{ fontWeight: 600, fontSize: 14 }}>{d.title}</span><span className={`sbadge s-${st.id === "open" ? "active" : st.id === "in-progress" ? "lead" : st.id === "closed" ? "partner" : "inactive"}`}>{st.label}</span><span style={{ fontSize: 11.5, color: "var(--fg3)" }}>{rnd.label}</span>{d.amount > 0 && <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", fontWeight: 500 }}>{fv(d.amount)}</span>}</div><div style={{ fontSize: 12.5, color: "var(--fg2)", marginBottom: 5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{d.description}</div>{auth && <AuthorChip contactId={d.createdBy} contacts={contacts} onOpen={() => { }} label="By" />}</div></div></div>); })}
-        {!list.length && <div className="empty"><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">No deals</div></div>}
+
+      {/* Three main tabs */}
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button
+          className={`tab${tab === "fundraising" ? " on" : ""}`}
+          onClick={() => { setTab("fundraising"); setFltStatus(null); setQ(""); }}
+        >
+          📈 Fundraising
+          {fundraisingDeals.filter(d => d.status === "open").length > 0 &&
+            <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
+              {fundraisingDeals.filter(d => d.status === "open").length} open
+            </span>
+          }
+        </button>
+        <button
+          className={`tab${tab === "investing" ? " on" : ""}`}
+          onClick={() => { setTab("investing"); setFltStatus(null); setQ(""); }}
+        >
+          💰 Investing
+          {investingDeals.filter(d => d.status === "open").length > 0 &&
+            <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
+              {investingDeals.filter(d => d.status === "open").length} active
+            </span>
+          }
+        </button>
+        <button
+          className={`tab${tab === "synergy" ? " on" : ""}`}
+          onClick={() => { setTab("synergy"); setFltStatus(null); setQ(""); }}
+          style={tab === "synergy" ? {} : { color: "oklch(0.6 0.15 280)" }}
+        >
+          🤝 Synergy
+          {(() => {
+            const f = deals.filter(d => d.dealMode !== "investing" && d.status === "open");
+            const inv = deals.filter(d => d.dealMode === "investing" && d.status === "open");
+            let hot = 0;
+            for (const fr of f) for (const iv of inv) { if (computeSynergy(fr, iv).tier === "hot") hot++; }
+            return hot > 0 ? <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", color: "var(--warn-fg)", fontWeight: 700 }}>🔥{hot}</span> : null;
+          })()}
+        </button>
       </div>
-      {creating && <CreateModal type="deal" onClose={() => setCreating(false)} onSave={onCreate} contacts={contacts} companies={[]} projects={[]} deals={deals} authorId={currentUserId} />}
+
+      {/* Synergy tab render */}
+      {tab === "synergy" && <SynergyTab deals={deals} onOpen={onOpenEntity} />}
+
+      {/* Search + Status filter — only for fundraising/investing tabs */}
+      {tab !== "synergy" && <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+        <div style={{ position: "relative", flex: 1, maxWidth: 340 }}>
+          <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
+            <I n="search" s={13} c="var(--fg3)" />
+          </span>
+          <input
+            className="srch-in"
+            style={{ paddingLeft: 27, width: "100%" }}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder={tab === "fundraising" ? "Search deals..." : "Search investors..."}
+          />
+        </div>
+      </div>}
+
+      {tab !== "synergy" && <div className="fb" style={{ marginBottom: 14 }}>
+        <span className="fb-lbl">Status:</span>
+        {DEAL_STATUSES.map(s => (
+          <button key={s.id} className={`fp${fltStatus === s.id ? " on" : ""}`}
+            onClick={() => setFltStatus(fltStatus === s.id ? null : s.id)}>
+            {s.label}
+          </button>
+        ))}
+      </div>}
+
+      {/* Deal cards */}
+      {tab !== "synergy" && <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {filtered.map(d => {
+          const rnd = roundObj(d.round);
+          const st = DEAL_STATUSES.find(s => s.id === d.status) || DEAL_STATUSES[0];
+          const auth = contacts.find(c => c.id === d.createdBy);
+          const isInvesting = d.dealMode === "investing";
+
+          return (
+            <div key={d.id} className="card card-p card-hover" onClick={() => onOpenEntity("deal", d.id)}>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                {/* Accent bar — синий для fundraising, зелёный для investing */}
+                <div style={{
+                  width: 3,
+                  background: isInvesting ? "var(--tf-g)" : "oklch(0.55 0.14 240)",
+                  borderRadius: 2, alignSelf: "stretch", minHeight: 40, flexShrink: 0
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{d.title}</span>
+                    <span className={`sbadge s-${st.id === "open" ? "active" : st.id === "in-progress" ? "lead" : st.id === "closed" ? "partner" : "inactive"}`}>
+                      {st.label}
+                    </span>
+                    {!isInvesting && <span style={{ fontSize: 11.5, color: "var(--fg3)" }}>{rnd.label}</span>}
+                    {d.amount > 0 && <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", fontWeight: 500 }}>{fv(d.amount)}</span>}
+                    {/* Investing-специфичные поля */}
+                    {isInvesting && d.minTicket > 0 && (
+                      <span style={{ fontSize: 11.5, color: "var(--fg3)" }}>
+                        min {fv(d.minTicket)}
+                        {d.maxTicket > 0 ? ` – ${fv(d.maxTicket)}` : "+"}
+                      </span>
+                    )}
+                    {isInvesting && d.preferredStages?.length > 0 && (
+                      <span style={{ fontSize: 11, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 6px", borderRadius: 3 }}>
+                        {d.preferredStages.slice(0, 2).join(", ")}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 12.5, color: "var(--fg2)", marginBottom: 5,
+                    overflow: "hidden", display: "-webkit-box",
+                    WebkitLineClamp: 2, WebkitBoxOrient: "vertical"
+                  }}>
+                    {d.description}
+                  </div>
+                  {/* Investing: verticals */}
+                  {isInvesting && d.preferredVerticals?.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 5 }}>
+                      {d.preferredVerticals.slice(0, 4).map(v => <Tag key={v} id={v} />)}
+                    </div>
+                  )}
+                  {auth && <AuthorChip contactId={d.createdBy} contacts={contacts} onOpen={() => { }} label="By" />}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {!filtered.length && (
+          <div className="empty">
+            <div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div>
+            <div className="empty-t">
+              {tab === "fundraising" ? "No fundraising deals" : "No investors yet"}
+            </div>
+          </div>
+        )}
+      </div>}
+
+      {creating && (
+        <CreateModal
+          type="deal"
+          dealMode={creatingType}
+          onClose={() => setCreating(false)}
+          onSave={onCreate}
+          contacts={contacts}
+          companies={[]}
+          projects={[]}
+          deals={deals}
+          authorId={currentUserId}
+        />
+      )}
     </div>
   );
 }
@@ -2298,7 +2930,9 @@ function fuzzyScore(a, b) {
 }
 
 /* ── SmartCreateModal Component ───────────────────────────────── */
-function CreateModal({ type, onClose, onSave, contacts, companies, projects, deals, authorId }) {
+function CreateModal({ type, dealMode, onClose, onSave, contacts, companies, projects, deals, authorId }) {
+  // expose dealMode as props.dealMode alias for JSX below
+  const props = { dealMode };
   const blank = {
     contact: { name: "", company: "", website: "", role: "founder", status: "active", telegram: "", twitter: "", linkedin: "", email: "", tags: [], score: 70, notes: "", karma: 0, karmaBreakdown: { up: 0, down: 0 }, reports: [], trustStatus: "ok", views: 0, companyIds: [], projectIds: [], createdBy: authorId, createdAt: today() },
     company: { name: "", website: "", stage: "Seed", description: "", tags: [], memberIds: [], partnerIds: [], karma: 0, karmaBreakdown: { up: 0, down: 0 }, reports: [], trustStatus: "ok", views: 0, createdBy: authorId, createdAt: today() },
@@ -2309,7 +2943,19 @@ function CreateModal({ type, onClose, onSave, contacts, companies, projects, dea
 
   const [tab, setTab] = useState("smart"); // "smart" | "manual"
   const [pasteText, setPasteText] = useState("");
-  const [form, setForm] = useState({ ...blank[type], id: gid() });
+  const [form, setForm] = useState(() => ({
+    ...blank[type],
+    id: gid(),
+    ...(type === "deal" && dealMode === "investing" ? {
+      dealMode: "investing",
+      minTicket: 0,
+      maxTicket: 0,
+      preferredStages: [],
+      preferredVerticals: [],
+      preferredGeos: [],
+      instrument: "any",
+    } : {}),
+  }));
   const [aiStatus, setAiStatus] = useState("idle"); // idle | parsing | done | error | enriching
   const [aiFields, setAiFields] = useState({}); // fields highlighted as AI-filled
   const [linkedEntities, setLinkedEntities] = useState([]);
@@ -2321,7 +2967,7 @@ function CreateModal({ type, onClose, onSave, contacts, companies, projects, dea
   const parseTimerRef = useRef(null);
   const textareaRef = useRef(null);
 
-  const titles = { contact: "New Contact", company: "New Company", project: "New Project", deal: "New Deal", lf: "New Post" };
+  const titles = { contact: "New Contact", company: "New Company", project: "New Project", deal: dealMode === "investing" ? "Deploy Capital" : "New Deal", lf: "New Post" };
   const icons = { contact: "contacts", company: "company", project: "project", deal: "deals", lf: "lf" };
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -2444,7 +3090,8 @@ Fill ALL schema fields from this research. Add source info to notes: "Auto-enric
         " Projects:" + JSON.stringify(projects.slice(0,10).map(p=>({id:p.id,name:p.name})));
       const userPrompt = `Extract a ${type.toUpperCase()} entity. Fill EVERY field you can determine.
 CRITICAL for description/body/notes: copy verbatim from TEXT. Preserve ALL newlines, emoji, bullets.
-For deals: title = "ProjectName — RoundLabel · $Amount". REQUIRED: subEntities MUST include the funded project AND named people.
+For deals (fundraising mode): title = "ProjectName — RoundLabel · $Amount". REQUIRED: subEntities MUST include the funded project AND named people.
+For deals (investing/deploy capital mode): dealMode = "investing". Extract: title (investor/fund name), description (strategy), minTicket (number, USD, min 0.10), maxTicket (0 = unlimited), preferredStages (array of round ids from: angels,pre-seed,seed,strategic,private-sale,series-a,series-b,pre-tge,public-sale,tge,otc,grants,ecosystem-fund), preferredVerticals (array), preferredGeos (array), instrument (equity|token|safe|otc|lp|any), terms (additional criteria).
 Dedup: if name/projectName closely matches existing DB entity, return dedup:{entity:{id,name},score}.
 Tags:[${TAG_LIST}] Roles:[${ROLE_LIST}]
 ${existingCtx}
@@ -2583,7 +3230,8 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                     type === "contact" ? "e.g. Pavel Durov, CEO at TON Foundation. Builder of Telegram. @durov on TG. Focused on L1, privacy, messaging. Based in Dubai." :
                     type === "company" ? "e.g. Paradigm is a leading crypto VC based in the US, focused on DeFi and infrastructure. $2.5B AUM. paradigm.xyz" :
                     type === "project" ? "e.g. zkSync is a ZK-rollup L2 scaling solution for Ethereum. Currently on Mainnet. zksync.io — infra, zk, l2" :
-                    type === "deal" ? "e.g. Seed round, $3M at $15M valuation cap. SAFT. Token: FLOW. 18 month vest, 6 month cliff. Open." :
+                    type === "deal" && dealMode !== "investing" ? "e.g. Seed round, $3M at $15M valuation cap. SAFT. Token: FLOW. 18 month vest, 6 month cliff. Open." :
+                    type === "deal" && dealMode === "investing" ? "e.g. Angel investor, deploying $10K–$100K per deal. Focus: DeFi, Infrastructure. Pre-seed & Seed only. SAFT or Equity. Global. Looking for strong founders." :
                     "e.g. Looking for a Market Maker for DEX listing. Token TGE in Q2. Budget available. DM @handle"
                   }
                   value={pasteText}
@@ -2799,8 +3447,8 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                 </div>
               </>)}
 
-              {/* DEAL */}
-              {type === "deal" && (<>
+              {/* DEAL — FUNDRAISING mode */}
+              {type === "deal" && props.dealMode !== "investing" && (<>
                 <div className="fg0"><label className="lbl">Deal Title *</label><input className="inp" style={fieldStyle("title")} placeholder="Seed Round — FlowBridge" value={form.title} onChange={e => set("title", e.target.value)} autoFocus /></div>
                 <div className="g2">
                   <div className="fg0"><label className="lbl">Round</label><select className="sel" style={fieldStyle("round")} value={form.round} onChange={e => set("round", e.target.value)}>{DEAL_ROUNDS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}</select></div>
@@ -2814,6 +3462,103 @@ Return ONLY raw JSON:${schemas[type]||schemas.contact}`;
                 <div className="fg0"><label className="lbl">Project Name</label><input className="inp" style={fieldStyle("projectName")} placeholder="FlowBridge" value={form.projectName} onChange={e => set("projectName", e.target.value)} /></div>
                 <div className="fg0"><label className="lbl">Description</label><textarea className="ta" style={fieldStyle("description")} placeholder="What is this deal about?" value={form.description} onChange={e => set("description", e.target.value)} /></div>
                 <div className="fg0"><label className="lbl">Terms</label><textarea className="ta" style={fieldStyle("terms")} placeholder="$10M valuation cap. SAFT. 18m vest 6m cliff." value={form.terms} onChange={e => set("terms", e.target.value)} /></div>
+              </>)}
+
+              {/* DEAL — INVESTING mode (Deploy Capital) */}
+              {type === "deal" && props.dealMode === "investing" && (<>
+                <div className="fg0">
+                  <label className="lbl">Investor / Fund Name *</label>
+                  <input className="inp" style={fieldStyle("title")} placeholder="e.g. My Angel Fund · John Doe" value={form.title} onChange={e => set("title", e.target.value)} autoFocus />
+                </div>
+                <div className="fg0">
+                  <label className="lbl">About &amp; Strategy</label>
+                  <textarea className="ta" style={fieldStyle("description")} placeholder="Who you are, what you invest in, typical terms, value-add beyond capital..." value={form.description} onChange={e => set("description", e.target.value)} />
+                </div>
+
+                {/* Ticket size */}
+                <div className="g2">
+                  <div className="fg0">
+                    <label className="lbl">Min Ticket (USD)</label>
+                    <input className="inp" type="number" style={fieldStyle("minTicket")} placeholder="0.10" step="0.01" value={form.minTicket || ""} onChange={e => set("minTicket", Number(e.target.value))} />
+                    <div style={{ fontSize: 11, color: "var(--fg3)", marginTop: 3 }}>From $0.10 — no minimum</div>
+                  </div>
+                  <div className="fg0">
+                    <label className="lbl">Max Ticket (USD)</label>
+                    <input className="inp" type="number" style={fieldStyle("maxTicket")} placeholder="0 = unlimited" value={form.maxTicket || ""} onChange={e => set("maxTicket", Number(e.target.value))} />
+                    <div style={{ fontSize: 11, color: "var(--fg3)", marginTop: 3 }}>0 = no limit</div>
+                  </div>
+                </div>
+
+                {/* Preferred stages */}
+                <div className="fg0">
+                  <label className="lbl">Preferred Stages</label>
+                  <div className="tw">
+                    {DEAL_ROUNDS.map(r => (
+                      <button key={r.id}
+                        className={`tp${(form.preferredStages || []).includes(r.id) ? " on" : ""}`}
+                        onClick={() => {
+                          const cur = form.preferredStages || [];
+                          set("preferredStages", cur.includes(r.id) ? cur.filter(x => x !== r.id) : [...cur, r.id]);
+                        }}>{r.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preferred verticals */}
+                <div className="fg0">
+                  <label className="lbl">Preferred Verticals</label>
+                  <div className="tw">
+                    {VERTICALS.map(v => (
+                      <button key={v.id}
+                        className={`tp${(form.preferredVerticals || []).includes(v.id) ? " on" : ""}`}
+                        onClick={() => {
+                          const cur = form.preferredVerticals || [];
+                          set("preferredVerticals", cur.includes(v.id) ? cur.filter(x => x !== v.id) : [...cur, v.id]);
+                        }}>{v.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preferred geos */}
+                <div className="fg0">
+                  <label className="lbl">Preferred Geos</label>
+                  <div className="tw">
+                    {GEOS.map(g => (
+                      <button key={g.id}
+                        className={`tp${(form.preferredGeos || []).includes(g.id) ? " on" : ""}`}
+                        onClick={() => {
+                          const cur = form.preferredGeos || [];
+                          set("preferredGeos", cur.includes(g.id) ? cur.filter(x => x !== g.id) : [...cur, g.id]);
+                        }}>{g.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Instrument */}
+                <div className="g2">
+                  <div className="fg0">
+                    <label className="lbl">Instrument</label>
+                    <select className="sel" value={form.instrument || "equity"} onChange={e => set("instrument", e.target.value)}>
+                      <option value="equity">Equity</option>
+                      <option value="token">Token / SAFT</option>
+                      <option value="safe">SAFE / Convertible</option>
+                      <option value="otc">OTC</option>
+                      <option value="lp">LP (Fund)</option>
+                      <option value="any">Any</option>
+                    </select>
+                  </div>
+                  <div className="fg0">
+                    <label className="lbl">Status</label>
+                    <select className="sel" value={form.status} onChange={e => set("status", e.target.value)}>
+                      {DEAL_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="fg0">
+                  <label className="lbl">Additional Criteria / Notes</label>
+                  <textarea className="ta" style={fieldStyle("terms")} placeholder="E.g. must have token, no KYC required, looking for B2B SaaS only, co-invest OK..." value={form.terms} onChange={e => set("terms", e.target.value)} />
+                </div>
               </>)}
 
               {/* LF POST */}
@@ -3879,7 +4624,20 @@ export default function App() {
     <div className={`app${theme === "dark" ? " dark" : ""}`}>
       <style>{STYLE}</style>
       <div className="sb">
-        <div className="sb-logo"><div className="sb-mark"><span className="sb-mark-t">W3</span></div><div><div className="sb-name">W3 Net</div><div className="sb-sub">Web3 Networking Hub</div></div></div>
+        <div className="sb-logo">
+          <div
+            className="sb-mark"
+            title={`W3 NET ${APP_VERSION}`}
+            onClick={() => alert(`W3 NET ${APP_VERSION}`)}
+            style={{ cursor: "pointer", flexShrink: 0 }}
+          >
+            <span className="sb-mark-t">W3</span>
+          </div>
+          <div>
+            <div className="sb-name">W3 Net</div>
+            <div className="sb-sub">Web3 Networking Hub</div>
+          </div>
+        </div>
         <div className="sb-nav">
           <div className="sb-sec">Main</div>
           {NAV.map(n => (
@@ -3913,7 +4671,6 @@ export default function App() {
 
       <div className="main">
         <div className="topbar">
-          <div className="tb-title">{ALL_PAGES_LABEL[page] || "W3 Net"}</div>
           <div className="tb-right" />
         </div>
         <div className="page">
