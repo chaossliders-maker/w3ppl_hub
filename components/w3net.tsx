@@ -2643,33 +2643,77 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
 
 function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
   const [tab, setTab] = useState("fundraising"); // "fundraising" | "investing" | "synergy"
-  const [fltStatus, setFltStatus] = useState(null);
   const [q, setQ] = useState("");
+  const [viewMode, setViewMode] = useState<"list"|"grid">("list");
   const [creating, setCreating] = useState(false);
   const [creatingType, setCreatingType] = useState("fundraising");
 
-  // Fundraising = проекты ищут инвестиции (стандартные deals)
-  const fundraisingDeals = useMemo(() =>
-    deals.filter(d => d.dealMode !== "investing"),
-    [deals]
-  );
-  // Investing = инвесторы хотят вложить капитал
-  const investingDeals = useMemo(() =>
-    deals.filter(d => d.dealMode === "investing"),
-    [deals]
-  );
+  // ── Filters ──
+  const [fltStatus,     setFltStatus]     = useState<string|null>(null);
+  const [fltType,       setFltType]       = useState<string|null>(null); // seeking type / capital type
+  const [fltVerticals,  setFltVerticals]  = useState<string[]>([]);
+  const [fltRound,      setFltRound]      = useState<string|null>(null);
+  const [fltInstrument, setFltInstrument] = useState<string|null>(null);
+  const [fltGeo,        setFltGeo]        = useState<string|null>(null);
+  const [fltAmountMin,  setFltAmountMin]  = useState<number>(0);
+  const [sortBy,        setSortBy]        = useState<"newest"|"amount"|"active">("newest");
+  const [showFilters,   setShowFilters]   = useState(false);
 
+  const clearFilters = () => {
+    setFltStatus(null); setFltType(null); setFltVerticals([]);
+    setFltRound(null); setFltInstrument(null); setFltGeo(null);
+    setFltAmountMin(0); setSortBy("newest");
+  };
+  const activeFilterCount = [fltStatus, fltType, fltRound, fltInstrument, fltGeo]
+    .filter(Boolean).length + fltVerticals.length + (fltAmountMin > 0 ? 1 : 0);
+
+  const fundraisingDeals = useMemo(() => deals.filter(d => d.dealMode !== "investing"), [deals]);
+  const investingDeals   = useMemo(() => deals.filter(d => d.dealMode === "investing"),  [deals]);
   const activeList = tab === "fundraising" ? fundraisingDeals : investingDeals;
-  const filtered = useMemo(() =>
-    activeList
-      .filter(d =>
-        (!q || d.title?.toLowerCase().includes(q.toLowerCase()) ||
-          d.description?.toLowerCase().includes(q.toLowerCase())) &&
-        (!fltStatus || d.status === fltStatus)
-      )
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [activeList, q, fltStatus]
-  );
+
+  const filtered = useMemo(() => {
+    let list = activeList.filter(d => {
+      if (q && !d.title?.toLowerCase().includes(q.toLowerCase()) &&
+               !d.description?.toLowerCase().includes(q.toLowerCase())) return false;
+      if (fltStatus && d.status !== fltStatus) return false;
+      if (fltType) {
+        if (tab === "fundraising" && d.seekingType !== fltType) return false;
+        if (tab === "investing"   && d.investorType !== fltType) return false;
+      }
+      if (fltRound) {
+        if (tab === "fundraising" && d.round !== fltRound) return false;
+        if (tab === "investing"   && !(d.preferredStages||[]).includes(fltRound)) return false;
+      }
+      if (fltInstrument) {
+        if (tab === "fundraising" && d.instrument && d.instrument !== fltInstrument) return false;
+        if (tab === "investing"   && !(d.preferredInstruments||[]).includes(fltInstrument)) return false;
+      }
+      if (fltGeo) {
+        const dGeos = tab === "fundraising" ? (d.geoRestrictions||[]) : (d.preferredGeos||[]);
+        if (dGeos.length > 0 && !dGeos.includes(fltGeo) && !dGeos.includes("global")) return false;
+      }
+      if (fltVerticals.length > 0) {
+        const dVerts = tab === "fundraising" ? (d.tags||[]) : (d.preferredVerticals||[]);
+        if (!fltVerticals.some(v => dVerts.includes(v))) return false;
+      }
+      if (fltAmountMin > 0) {
+        const amt = tab === "fundraising" ? (d.amount||0) : (d.maxTicket||0);
+        if (amt < fltAmountMin) return false;
+      }
+      return true;
+    });
+    if (sortBy === "newest") list = list.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (sortBy === "amount") list = list.sort((a,b) => ((b.amount||b.maxTicket||0) - (a.amount||a.maxTicket||0)));
+    if (sortBy === "active") list = list.sort((a,b) => (a.status === "active" ? -1 : 1));
+    return list;
+  }, [activeList, q, fltStatus, fltType, fltRound, fltInstrument, fltGeo, fltVerticals, fltAmountMin, sortBy, tab]);
+
+  // Vertical options used in current list
+  const usedVerticals = useMemo(() => {
+    const all = activeList.flatMap(d => tab === "fundraising" ? (d.tags||[]) : (d.preferredVerticals||[]));
+    return VERTICALS.filter(v => all.includes(v.id));
+  }, [activeList, tab]);
+
 
   return (
     <div>
@@ -2691,7 +2735,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
       <div className="tabs" style={{ marginBottom: 14 }}>
         <button
           className={`tab${tab === "fundraising" ? " on" : ""}`}
-          onClick={() => { setTab("fundraising"); setFltStatus(null); setQ(""); }}
+          onClick={() => { setTab("fundraising"); clearFilters(); setQ(""); }}
         >
           📣 Seeking
           {fundraisingDeals.filter(d => d.status === "active").length > 0 &&
@@ -2702,7 +2746,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
         </button>
         <button
           className={`tab${tab === "investing" ? " on" : ""}`}
-          onClick={() => { setTab("investing"); setFltStatus(null); setQ(""); }}
+          onClick={() => { setTab("investing"); clearFilters(); setQ(""); }}
         >
           💰 Deploying
           {investingDeals.filter(d => d.status === "active").length > 0 &&
@@ -2728,124 +2772,252 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
       </div>
 
       {/* Synergy tab render */}
-      {tab === "synergy" && <SynergyTab deals={deals} onOpen={onOpenEntity} onSwitchTab={(t) => { setTab(t); setFltStatus(null); setQ(""); }} />}
+      {tab === "synergy" && <SynergyTab deals={deals} onOpen={onOpenEntity} onSwitchTab={(t) => { setTab(t); clearFilters(); setQ(""); }} />}
 
-      {/* Search + Status filter — only for fundraising/investing tabs */}
-      {tab !== "synergy" && <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
-        <div style={{ position: "relative", flex: 1, maxWidth: 340 }}>
-          <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
-            <I n="search" s={13} c="var(--fg3)" />
-          </span>
-          <input
-            className="srch-in"
-            style={{ paddingLeft: 27, width: "100%" }}
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder={tab === "fundraising" ? "Search deals..." : "Search investors..."}
-          />
-        </div>
-      </div>}
-
-      {tab !== "synergy" && <div className="fb" style={{ marginBottom: 14 }}>
-        <span className="fb-lbl">Filter:</span>
-        {[{ id: null, label: "All" }, ...DEAL_STATUSES].map(s => (
-          <button key={s.id ?? "all"} className={`fp${fltStatus === s.id ? " on" : ""}`}
-            title={s.desc}
-            onClick={() => setFltStatus(s.id)}>
-            {s.id === "active" ? "● " : s.id === "paused" ? "⏸ " : s.id === "filled" ? "✓ " : ""}{s.label ?? "All"}
+      {/* ── Search + toolbar ── */}
+      {tab !== "synergy" && (<>
+        <div style={{ display: "flex", gap: 7, marginBottom: 8, alignItems: "center" }}>
+          {/* Search */}
+          <div style={{ position: "relative", flex: 1 }}>
+            <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
+              <I n="search" s={13} c="var(--fg3)" />
+            </span>
+            <input className="srch-in" style={{ paddingLeft: 27, width: "100%" }}
+              value={q} onChange={e => setQ(e.target.value)}
+              placeholder={tab === "fundraising" ? "Search seeking posts..." : "Search deploying posts..."} />
+          </div>
+          {/* Filter toggle */}
+          <button className={`btn btn-g btn-sm${showFilters ? " on" : ""}`}
+            style={activeFilterCount > 0 ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}}
+            onClick={() => setShowFilters(f => !f)}>
+            ⚙ Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
           </button>
-        ))}
-      </div>}
+          {/* Sort */}
+          <select className="sel" style={{ fontSize: 12, padding: "5px 8px", width: "auto" }}
+            value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
+            <option value="newest">🕐 Newest</option>
+            <option value="amount">💰 By Amount</option>
+            <option value="active">● Active first</option>
+          </select>
+          {/* List / Grid toggle */}
+          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+            <button onClick={() => setViewMode("list")}
+              style={{ padding: "5px 9px", background: viewMode === "list" ? "var(--bg3)" : "transparent", border: "none", cursor: "pointer", color: viewMode === "list" ? "var(--fg)" : "var(--fg3)", fontSize: 13 }}>
+              ☰
+            </button>
+            <button onClick={() => setViewMode("grid")}
+              style={{ padding: "5px 9px", background: viewMode === "grid" ? "var(--bg3)" : "transparent", border: "none", cursor: "pointer", color: viewMode === "grid" ? "var(--fg)" : "var(--fg3)", fontSize: 13, borderLeft: "1px solid var(--border)" }}>
+              ⊞
+            </button>
+          </div>
+        </div>
 
-      {/* Deal cards */}
-      {tab !== "synergy" && <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {filtered.map(d => {
-          const rnd = roundObj(d.round);
-          const st = DEAL_STATUSES.find(s => s.id === d.status) || DEAL_STATUSES[0];
-          const auth = contacts.find(c => c.id === d.createdBy);
-          const isInvesting = d.dealMode === "investing";
-
-          return (
-            <div key={d.id} className="card card-p card-hover" onClick={() => onOpenEntity("deal", d.id)}>
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                {/* Accent bar */}
-                <div style={{ width: 3, background: isInvesting ? "var(--tf-g)" : "oklch(0.55 0.14 240)", borderRadius: 2, alignSelf: "stretch", minHeight: 40, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  {/* Title row */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 13.5 }}>{d.title}</span>
-                    {/* Status badge with icon */}
-                    <span style={{ fontSize: 11, color: st.color, background: "var(--bg3)", padding: "1px 6px", borderRadius: 3, fontWeight: 500 }}>
-                      {st.icon} {st.label}
-                    </span>
-                    {!isInvesting && <span style={{ fontSize: 11, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>{rnd.label}</span>}
-                    {d.amount > 0 && <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--tf-g)" }}>{fv(d.amount)} {d.currency && d.currency !== "USD" ? d.currency : ""}</span>}
-                    {/* Investor: ticket range */}
-                    {isInvesting && (d.minTicket > 0 || d.maxTicket > 0) && (
-                      <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--tf-g)", fontWeight: 600 }}>
-                        {fv(d.minTicket || 0)}–{d.maxTicket > 0 ? fv(d.maxTicket) : "∞"} {d.currency && d.currency !== "USD" ? d.currency : ""}
-                      </span>
-                    )}
-                    {/* Fundraiser: instrument */}
-                    {!isInvesting && d.instrument && d.instrument !== "any" && (
-                      <span style={{ fontSize: 10.5, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>
-                        {INSTRUMENTS.find(i => i.id === d.instrument)?.label || d.instrument}
-                      </span>
-                    )}
-                    {/* Investor: preferred instruments */}
-                    {isInvesting && d.preferredInstruments?.length > 0 && (
-                      <span style={{ fontSize: 10.5, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>
-                        {d.preferredInstruments.slice(0,2).map((id: string) => INSTRUMENTS.find(i=>i.id===id)?.label||id).join(" / ")}
-                      </span>
-                    )}
-                  </div>
-                  {/* Terms row: cliff / vesting */}
-                  {!isInvesting && (d.cliffMonths || d.vestingMonths || d.tgeUnlockPct) && (
-                    <div style={{ fontSize: 11, color: "var(--fg3)", marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {d.cliffMonths > 0 && <span>🔒 {d.cliffMonths}m cliff</span>}
-                      {d.vestingMonths > 0 && <span>📅 {d.vestingMonths}m vest</span>}
-                      {d.tgeUnlockPct > 0 && <span>🔓 {d.tgeUnlockPct}% TGE</span>}
-                      {d.valuationCap > 0 && <span>📊 {fv(d.valuationCap)} cap</span>}
-                      {d.leadRequired && <span style={{ color: "var(--warn-fg)" }}>⚡ Lead sought</span>}
-                    </div>
-                  )}
-                  {/* Investor stages */}
-                  {isInvesting && d.preferredStages?.length > 0 && (
-                    <div style={{ fontSize: 11, color: "var(--fg3)", marginBottom: 4, display: "flex", gap: 5, flexWrap: "wrap" }}>
-                      {d.preferredStages.slice(0, 4).map((s: string) => (
-                        <span key={s} style={{ background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>
-                          {DEAL_ROUNDS.find(r=>r.id===s)?.label || s}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {/* Description */}
-                  <div style={{ fontSize: 12.5, color: "var(--fg2)", marginBottom: 5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                    {d.description}
-                  </div>
-                  {/* Traction */}
-                  {!isInvesting && d.traction && (
-                    <div style={{ fontSize: 11, color: "var(--tf-g)", marginBottom: 4 }}>📈 {d.traction}</div>
-                  )}
-                  {/* Tags */}
-                  <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 4 }}>
-                    {(isInvesting ? (d.preferredVerticals||[]) : (d.tags||[]).filter((t: string) => VERTICALS.find(v=>v.id===t))).slice(0,4).map((t: string) => <Tag key={t} id={t} />)}
-                  </div>
-                  {auth && <AuthorChip contactId={d.createdBy} contacts={contacts} onOpen={() => {}} label="By" />}
+        {/* ── Expanded filter panel ── */}
+        {showFilters && (
+          <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 9, padding: "12px 14px", marginBottom: 12 }}>
+            {/* Row 1: Status + Type */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>Status</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[{ id: null, label: "All" }, ...DEAL_STATUSES].map(s => (
+                    <button key={s.id ?? "all"} className={`fp${fltStatus === s.id ? " on" : ""}`}
+                      onClick={() => setFltStatus(fltStatus === s.id ? null : s.id)}>
+                      {s.id === "active" ? "● " : s.id === "paused" ? "⏸ " : s.id === "filled" ? "✓ " : ""}{s.label ?? "All"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>
+                  {tab === "fundraising" ? "Seeking Type" : "Investor Type"}
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {(tab === "fundraising" ? SEEKING_TYPES : INVESTOR_TYPES.slice(0, 8)).map((t: any) => (
+                    <button key={t.id} className={`fp${fltType === t.id ? " on" : ""}`}
+                      onClick={() => setFltType(fltType === t.id ? null : t.id)}>
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-          );
-        })}
-        {!filtered.length && (
-          <div className="empty">
-            <div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div>
-            <div className="empty-t">
-              {tab === "fundraising" ? "No fundraising deals" : "No investors yet"}
+            {/* Row 2: Round/Stage + Instrument */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>Stage / Round</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 420 }}>
+                  {[null, ...DEAL_ROUNDS.slice(0, 14)].map((r: any) => (
+                    <button key={r?.id ?? "all"} className={`fp${fltRound === (r?.id ?? null) ? " on" : ""}`}
+                      onClick={() => setFltRound(fltRound === (r?.id ?? null) ? null : (r?.id ?? null))}>
+                      {r ? r.label : "All"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>Instrument</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[null, ...INSTRUMENTS].map((i: any) => (
+                    <button key={i?.id ?? "all"} className={`fp${fltInstrument === (i?.id ?? null) ? " on" : ""}`}
+                      onClick={() => setFltInstrument(fltInstrument === (i?.id ?? null) ? null : (i?.id ?? null))}>
+                      {i ? i.label : "All"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Row 3: Verticals */}
+            {usedVerticals.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>Verticals</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {usedVerticals.map(v => (
+                    <button key={v.id} className={`fp${fltVerticals.includes(v.id) ? " on" : ""}`}
+                      onClick={() => setFltVerticals(prev => prev.includes(v.id) ? prev.filter(x => x !== v.id) : [...prev, v.id])}>
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Row 4: Geo + clear */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--fg3)", fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".4px" }}>Geography</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[null, ...GEOS].map((g: any) => (
+                    <button key={g?.id ?? "all"} className={`fp${fltGeo === (g?.id ?? null) ? " on" : ""}`}
+                      onClick={() => setFltGeo(fltGeo === (g?.id ?? null) ? null : (g?.id ?? null))}>
+                      {g ? g.label : "All"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {activeFilterCount > 0 && (
+                <button className="btn btn-g btn-sm" style={{ marginLeft: "auto", fontSize: 11 }} onClick={clearFilters}>
+                  ✕ Clear all filters
+                </button>
+              )}
             </div>
           </div>
         )}
-      </div>}
+
+        {/* Results count */}
+        <div style={{ fontSize: 11.5, color: "var(--fg3)", marginBottom: 8 }}>
+          {filtered.length} post{filtered.length !== 1 ? "s" : ""}
+          {activeFilterCount > 0 && <span style={{ color: "var(--accent)" }}> · {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} active</span>}
+        </div>
+
+        {/* ── Deal cards: LIST view ── */}
+        {viewMode === "list" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {filtered.map(d => {
+              const rnd = roundObj(d.round);
+              const st = DEAL_STATUSES.find(s => s.id === d.status) || DEAL_STATUSES[0];
+              const isInvesting = d.dealMode === "investing";
+              return (
+                <div key={d.id} className="card card-p card-hover" onClick={() => onOpenEntity("deal", d.id)}
+                  style={{ padding: "10px 13px" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 3, background: isInvesting ? "var(--tf-g)" : "oklch(0.55 0.14 240)", borderRadius: 2, alignSelf: "stretch", minHeight: 36, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Title row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 3 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{d.title}</span>
+                        <span style={{ fontSize: 10.5, color: st.color, background: "var(--bg3)", padding: "1px 5px", borderRadius: 3, fontWeight: 500 }}>
+                          {st.id === "active" ? "●" : st.id === "paused" ? "⏸" : st.id === "filled" ? "✓" : "○"} {st.label}
+                        </span>
+                        {!isInvesting && rnd.label && <span style={{ fontSize: 10.5, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 5px", borderRadius: 3 }}>{rnd.label}</span>}
+                        {!isInvesting && d.amount > 0 && <span style={{ fontSize: 12, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--tf-g)" }}>{fv(d.amount)} {d.currency || "USD"}</span>}
+                        {isInvesting && (d.minTicket > 0 || d.maxTicket > 0) && <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--tf-g)", fontWeight: 600 }}>{fv(d.minTicket||0)}–{d.maxTicket > 0 ? fv(d.maxTicket) : "∞"} {d.currency||"USD"}</span>}
+                        {!isInvesting && d.instrument && d.instrument !== "any" && <span style={{ fontSize: 10, color: "var(--fg3)", background: "var(--bg3)", padding: "1px 4px", borderRadius: 3 }}>{INSTRUMENTS.find(i=>i.id===d.instrument)?.label||d.instrument}</span>}
+                      </div>
+                      {/* Meta row */}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        {!isInvesting && d.traction && <span style={{ fontSize: 11, color: "var(--tf-g)" }}>📈 {d.traction}</span>}
+                        {!isInvesting && d.cliffMonths > 0 && <span style={{ fontSize: 10.5, color: "var(--fg3)" }}>🔒{d.cliffMonths}m cliff</span>}
+                        {!isInvesting && d.vestingMonths > 0 && <span style={{ fontSize: 10.5, color: "var(--fg3)" }}>📅{d.vestingMonths}m vest</span>}
+                        {isInvesting && d.preferredStages?.slice(0,3).map((s:string) => <span key={s} style={{ fontSize: 10.5, background: "var(--bg3)", padding: "1px 4px", borderRadius: 3, color: "var(--fg3)" }}>{DEAL_ROUNDS.find(r=>r.id===s)?.label||s}</span>)}
+                        {(isInvesting ? (d.preferredVerticals||[]) : (d.tags||[]).filter((t:string)=>VERTICALS.find(v=>v.id===t))).slice(0,3).map((t:string) => <Tag key={t} id={t} />)}
+                      </div>
+                    </div>
+                    <AuthorChip contactId={d.createdBy} contacts={contacts} onOpen={()=>{}} label="" />
+                  </div>
+                </div>
+              );
+            })}
+            {!filtered.length && <div className="empty"><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No seeking posts" : "No deploying posts"}</div></div>}
+          </div>
+        )}
+
+        {/* ── Deal cards: GRID view ── */}
+        {viewMode === "grid" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+            {filtered.map(d => {
+              const rnd = roundObj(d.round);
+              const st = DEAL_STATUSES.find(s => s.id === d.status) || DEAL_STATUSES[0];
+              const isInvesting = d.dealMode === "investing";
+              const accentColor = isInvesting ? "var(--tf-g)" : "oklch(0.55 0.14 240)";
+              return (
+                <div key={d.id} className="card card-p card-hover" onClick={() => onOpenEntity("deal", d.id)}
+                  style={{ padding: "14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* Card header */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: ".5px" }}>
+                      {isInvesting ? "💰 Deploying" : "📣 " + (SEEKING_TYPES.find(s=>s.id===d.seekingType)?.label || "Seeking")}
+                    </div>
+                    <span style={{ fontSize: 10.5, color: st.color, background: "var(--bg3)", padding: "2px 6px", borderRadius: 3, fontWeight: 600, flexShrink: 0 }}>
+                      {st.id === "active" ? "●" : st.id === "filled" ? "✓" : "⏸"} {st.label}
+                    </span>
+                  </div>
+                  {/* Title */}
+                  <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3 }}>{d.title}</div>
+                  {/* Amount / ticket */}
+                  {!isInvesting && d.amount > 0 && (
+                    <div style={{ fontSize: 18, fontFamily: "var(--mono)", fontWeight: 800, color: "var(--tf-g)" }}>
+                      {fv(d.amount)} <span style={{ fontSize: 12, fontWeight: 500, color: "var(--fg3)" }}>{d.currency||"USD"}</span>
+                    </div>
+                  )}
+                  {isInvesting && (d.minTicket > 0 || d.maxTicket > 0) && (
+                    <div style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 800, color: "var(--tf-g)" }}>
+                      {fv(d.minTicket||0)} – {d.maxTicket > 0 ? fv(d.maxTicket) : "∞"} <span style={{ fontSize: 11, fontWeight: 500, color: "var(--fg3)" }}>{d.currency||"USD"}</span>
+                    </div>
+                  )}
+                  {/* Round + instrument */}
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {!isInvesting && rnd.label && <span style={{ fontSize: 11, background: "var(--bg3)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, color: "var(--fg2)" }}>{rnd.label}</span>}
+                    {!isInvesting && d.instrument && d.instrument !== "any" && <span style={{ fontSize: 11, background: "var(--bg3)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, color: "var(--fg2)" }}>{INSTRUMENTS.find(i=>i.id===d.instrument)?.label}</span>}
+                    {isInvesting && d.preferredStages?.slice(0,2).map((s:string) => <span key={s} style={{ fontSize: 11, background: "var(--bg3)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, color: "var(--fg2)" }}>{DEAL_ROUNDS.find(r=>r.id===s)?.label||s}</span>)}
+                  </div>
+                  {/* Description */}
+                  <div style={{ fontSize: 12, color: "var(--fg2)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{d.description}</div>
+                  {/* Traction */}
+                  {!isInvesting && d.traction && <div style={{ fontSize: 11, color: "var(--tf-g)", background: "oklch(0.18 0.04 160)", padding: "4px 8px", borderRadius: 5 }}>📈 {d.traction}</div>}
+                  {/* Vesting row */}
+                  {!isInvesting && (d.cliffMonths || d.vestingMonths || d.tgeUnlockPct) && (
+                    <div style={{ display: "flex", gap: 6, fontSize: 10.5, color: "var(--fg3)" }}>
+                      {d.cliffMonths > 0 && <span>🔒 {d.cliffMonths}m cliff</span>}
+                      {d.vestingMonths > 0 && <span>📅 {d.vestingMonths}m vest</span>}
+                      {d.tgeUnlockPct > 0 && <span>🔓 {d.tgeUnlockPct}% TGE</span>}
+                    </div>
+                  )}
+                  {/* Tags */}
+                  <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                    {(isInvesting ? (d.preferredVerticals||[]) : (d.tags||[]).filter((t:string)=>VERTICALS.find(v=>v.id===t))).slice(0,4).map((t:string) => <Tag key={t} id={t} />)}
+                  </div>
+                  {/* Footer */}
+                  <div style={{ marginTop: "auto", paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+                    <AuthorChip contactId={d.createdBy} contacts={contacts} onOpen={()=>{}} label="by" />
+                  </div>
+                </div>
+              );
+            })}
+            {!filtered.length && <div className="empty" style={{ gridColumn: "1/-1" }}><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No seeking posts" : "No deploying posts"}</div></div>}
+          </div>
+        )}
+      </>)}
+
 
       {creating && (
         <CreateModal
