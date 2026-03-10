@@ -2534,18 +2534,18 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
 
   /* ── Empty state: both missing ── */
   if (fundraisers.length === 0 && investors.length === 0) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "50px 24px", textAlign: "center", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "50px 24px", textAlign: "center", gap: 16 }}>
       <div style={{ fontSize: 44 }}>🤝</div>
       <div style={{ fontSize: 16, fontWeight: 800 }}>Create deals to unlock Synergy</div>
       <div style={{ fontSize: 13, color: "var(--fg3)", maxWidth: 360, lineHeight: 1.7 }}>
-        Synergy matches <strong>Seeking</strong> posts (projects looking for capital, grants, accelerators) with <strong>Deploying</strong> posts (investors, funds, grant programs) — automatically scored by vertical, stage, ticket, instrument, geo & terms.
+        Post what you're <strong>seeking</strong> (capital, grant, accelerator) or what you're <strong>deploying</strong> (investment, grant, prize) — Synergy automatically matches both sides by vertical, stage, ticket, instrument, geo & terms.
       </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <button className="btn btn-p" onClick={() => onSwitchTab("fundraising")}>
-          <I n="plus" s={13} /> I'm Seeking
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <button className="btn btn-p" style={{ padding: "9px 20px", fontSize: 13, fontWeight: 700 }} onClick={() => onSwitchTab("fundraising")}>
+          📣 I'm Seeking
         </button>
-        <button className="btn btn-g" onClick={() => onSwitchTab("investing")}>
-          <I n="plus" s={13} /> I'm Deploying
+        <button className="btn btn-p" style={{ padding: "9px 20px", fontSize: 13, fontWeight: 700 }} onClick={() => onSwitchTab("investing")}>
+          💰 I'm Deploying
         </button>
       </div>
     </div>
@@ -2554,11 +2554,11 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
   /* ── Empty state: one side missing ── */
   if (fundraisers.length === 0 || investors.length === 0) {
     const missingMode = fundraisers.length === 0 ? "fundraising" : "investing";
-    const missingLabel = missingMode === "fundraising" ? "Fundraising deal" : "Investing criteria";
-    const missingIcon = missingMode === "fundraising" ? "📈" : "💰";
+    const missingLabel = missingMode === "fundraising" ? "Seeking post" : "Deploying post";
+    const missingIcon  = missingMode === "fundraising" ? "📣" : "💰";
     const existingLabel = missingMode === "fundraising"
-      ? `${investors.length} investor${investors.length > 1 ? "s" : ""} looking to deploy`
-      : `${fundraisers.length} deal${fundraisers.length > 1 ? "s" : ""} seeking funding`;
+      ? `${investors.length} deploying post${investors.length > 1 ? "s" : ""} active`
+      : `${fundraisers.length} seeking post${fundraisers.length > 1 ? "s" : ""} active`;
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "46px 24px", textAlign: "center", gap: 12 }}>
         <div style={{ fontSize: 36 }}>⚡</div>
@@ -2567,11 +2567,13 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
           <div style={{ fontSize: 12, color: "var(--tf-g)", marginBottom: 3 }}>✓ {existingLabel}</div>
           <div style={{ fontSize: 12, color: "var(--fg3)" }}>{missingIcon} Add a <strong>{missingLabel}</strong> to start matching</div>
         </div>
-        <button className="btn btn-p" onClick={() => onSwitchTab(missingMode)}>
-          <I n="plus" s={13} /> Add {missingLabel}
+        <button className="btn btn-p" style={{ padding: "9px 20px", fontSize: 13, fontWeight: 700 }} onClick={() => onSwitchTab(missingMode)}>
+          {missingIcon} Post {missingLabel}
         </button>
         <div style={{ fontSize: 11.5, color: "var(--fg3)" }}>
-          Or browse existing {missingMode === "fundraising" ? <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("investing")}>Investing criteria →</span> : <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("fundraising")}>Fundraising deals →</span>}
+          Or browse existing {missingMode === "fundraising"
+            ? <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("investing")}>Deploying posts →</span>
+            : <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("fundraising")}>Seeking posts →</span>}
         </div>
       </div>
     );
@@ -2679,7 +2681,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
         <div style={{ display: "flex", gap: 6 }}>
           {tab !== "synergy" && (
             <button className="btn btn-p" onClick={() => { setCreatingType(tab === "investing" ? "investing" : "fundraising"); setCreating(true); }}>
-              <I n="plus" s={13} /> {tab === "investing" ? "Post Capital" : "Seek Capital"}
+              <I n="plus" s={13} /> {tab === "investing" ? "💰 I'm Deploying" : "📣 I'm Seeking"}
             </button>
           )}
         </div>
@@ -2691,10 +2693,10 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           className={`tab${tab === "fundraising" ? " on" : ""}`}
           onClick={() => { setTab("fundraising"); setFltStatus(null); setQ(""); }}
         >
-          📈 Seeking
+          📣 Seeking
           {fundraisingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
-              {fundraisingDeals.filter(d => d.status === "active").length} active
+              {fundraisingDeals.filter(d => d.status === "active").length}
             </span>
           }
         </button>
@@ -2705,7 +2707,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           💰 Deploying
           {investingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
-              {investingDeals.filter(d => d.status === "active").length} active
+              {investingDeals.filter(d => d.status === "active").length}
             </span>
           }
         </button>
@@ -2745,12 +2747,12 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
       </div>}
 
       {tab !== "synergy" && <div className="fb" style={{ marginBottom: 14 }}>
-        <span className="fb-lbl">Status:</span>
-        {(tab === "investing" ? DEAL_STATUSES_INVESTING : DEAL_STATUSES_FUNDRAISING).map(s => (
-          <button key={s.id} className={`fp${fltStatus === s.id ? " on" : ""}`}
+        <span className="fb-lbl">Filter:</span>
+        {[{ id: null, label: "All" }, ...DEAL_STATUSES].map(s => (
+          <button key={s.id ?? "all"} className={`fp${fltStatus === s.id ? " on" : ""}`}
             title={s.desc}
-            onClick={() => setFltStatus(fltStatus === s.id ? null : s.id)}>
-            <span style={{ marginRight: 3, fontSize: 10 }}>{s.icon}</span>{s.label}
+            onClick={() => setFltStatus(s.id)}>
+            {s.id === "active" ? "● " : s.id === "paused" ? "⏸ " : s.id === "filled" ? "✓ " : ""}{s.label ?? "All"}
           </button>
         ))}
       </div>}
