@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 
-const APP_VERSION = "v4.8";
+const APP_VERSION = "v4.9";
 
 /* ═══════════════════════════════════════════════════════════════
    W3 NET v3.3  ·  Web3 Networking Hub
@@ -495,7 +495,7 @@ const ALL_TAGS = [...ROLES, ...VERTICALS, ...GEOS];
    Research: AngelList, Messari, ETHGlobal, Gitcoin, YC, a16z CSX
    ══════════════════════════════════════════════════════════════════ */
 
-// All capital categories — seeking AND deploying
+// All capital categories — seeking AND investments
 const DEAL_ROUNDS = [
   // Equity
   { id: "angels",        label: "Angels / FFF",      group: "💼 Equity",        desc: "Friends, family, angels — earliest checks" },
@@ -1446,7 +1446,7 @@ function EntityPopup({ entityType, entityId, contacts, companies, projects, deal
           <div style={{ width: 4, background: accentColor, borderRadius: 2, alignSelf: "stretch", minHeight: 52, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 4 }}>
-              {isInv ? "💰 Deploying Capital" : seekingType ? seekingType.label : "📈 Seeking Capital"}
+              {isInv ? "💼 Investing" : seekingType ? seekingType.label : "📈 Seeking Capital"}
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.3px", lineHeight: 1.2 }}>{entity.title}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -2538,14 +2538,14 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
       <div style={{ fontSize: 44 }}>🤝</div>
       <div style={{ fontSize: 16, fontWeight: 800 }}>Create deals to unlock Synergy</div>
       <div style={{ fontSize: 13, color: "var(--fg3)", maxWidth: 360, lineHeight: 1.7 }}>
-        Post what you're <strong>seeking</strong> (capital, grant, accelerator) or what you're <strong>deploying</strong> (investment, grant, prize) — Synergy automatically matches both sides by vertical, stage, ticket, instrument, geo & terms.
+        Post what you're <strong>fundraising</strong> (capital, grant, accelerator) or what you're <strong>investing</strong> (investment, grant, prize) — Synergy automatically matches both sides by vertical, stage, ticket, instrument, geo & terms.
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
         <button className="btn btn-p" style={{ padding: "9px 20px", fontSize: 13, fontWeight: 700 }} onClick={() => onSwitchTab("fundraising")}>
-          📣 I'm Seeking
+          📈 I'm Fundraising
         </button>
         <button className="btn btn-p" style={{ padding: "9px 20px", fontSize: 13, fontWeight: 700 }} onClick={() => onSwitchTab("investing")}>
-          💰 I'm Deploying
+          💼 I'm Investing
         </button>
       </div>
     </div>
@@ -2554,8 +2554,8 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
   /* ── Empty state: one side missing ── */
   if (fundraisers.length === 0 || investors.length === 0) {
     const missingMode = fundraisers.length === 0 ? "fundraising" : "investing";
-    const missingLabel = missingMode === "fundraising" ? "Seeking post" : "Deploying post";
-    const missingIcon  = missingMode === "fundraising" ? "📣" : "💰";
+    const missingLabel = missingMode === "fundraising" ? "Fundraising post" : "Investment post";
+    const missingIcon  = missingMode === "fundraising" ? "📈" : "💼";
     const existingLabel = missingMode === "fundraising"
       ? `${investors.length} deploying post${investors.length > 1 ? "s" : ""} active`
       : `${fundraisers.length} seeking post${fundraisers.length > 1 ? "s" : ""} active`;
@@ -2572,8 +2572,8 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
         </button>
         <div style={{ fontSize: 11.5, color: "var(--fg3)" }}>
           Or browse existing {missingMode === "fundraising"
-            ? <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("investing")}>Deploying posts →</span>
-            : <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("fundraising")}>Seeking posts →</span>}
+            ? <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("investing")}>Investment posts →</span>
+            : <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => onSwitchTab("fundraising")}>Fundraising posts →</span>}
         </div>
       </div>
     );
@@ -2586,8 +2586,8 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
         {[
           { label: "🔥 Hot",        val: hotCount,          color: "var(--warn-fg)",         bg: "var(--warn-bg)",  border: "var(--warn-border)" },
           { label: "✅ Good",        val: goodCount,          color: "var(--tf-g)",            bg: "var(--ok-bg)",   border: "var(--ok-border)" },
-          { label: "📣 Seeking",    val: fundraisers.length, color: "oklch(0.6 0.14 240)",    bg: "var(--bg2)",     border: "var(--border)" },
-          { label: "💰 Deploying",  val: investors.length,   color: "oklch(0.6 0.14 160)",    bg: "var(--bg2)",     border: "var(--border)" },
+          { label: "📈 Fundraising",    val: fundraisers.length, color: "oklch(0.6 0.14 240)",    bg: "var(--bg2)",     border: "var(--border)" },
+          { label: "💼 Investments",  val: investors.length,   color: "oklch(0.6 0.14 160)",    bg: "var(--bg2)",     border: "var(--border)" },
         ].map(s => (
           <div key={s.label} style={{ flex: 1, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 7, padding: "7px 8px", textAlign: "center" }}>
             <div style={{ fontFamily: "var(--mono)", fontSize: 17, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
@@ -2720,12 +2720,12 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
       <div className="ph">
         <div>
           <div className="ph-t">Deals</div>
-          <div className="ph-s">{fundraisingDeals.length} seeking · {investingDeals.length} deploying</div>
+          <div className="ph-s">{fundraisingDeals.length} fundraising · {investingDeals.length} deploying</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {tab !== "synergy" && (
             <button className="btn btn-p" onClick={() => { setCreatingType(tab === "investing" ? "investing" : "fundraising"); setCreating(true); }}>
-              <I n="plus" s={13} /> {tab === "investing" ? "💰 I'm Deploying" : "📣 I'm Seeking"}
+              <I n="plus" s={13} /> {tab === "investing" ? "💼 I'm Investing" : "📈 I'm Fundraising"}
             </button>
           )}
         </div>
@@ -2737,7 +2737,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           className={`tab${tab === "fundraising" ? " on" : ""}`}
           onClick={() => { setTab("fundraising"); clearFilters(); setQ(""); }}
         >
-          📣 Seeking
+          📈 Fundraising
           {fundraisingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
               {fundraisingDeals.filter(d => d.status === "active").length}
@@ -2748,7 +2748,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
           className={`tab${tab === "investing" ? " on" : ""}`}
           onClick={() => { setTab("investing"); clearFilters(); setQ(""); }}
         >
-          💰 Deploying
+          💼 Investments
           {investingDeals.filter(d => d.status === "active").length > 0 &&
             <span style={{ marginLeft: 5, fontSize: 11, fontFamily: "var(--mono)", opacity: .7 }}>
               {investingDeals.filter(d => d.status === "active").length}
@@ -2784,7 +2784,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
             </span>
             <input className="srch-in" style={{ paddingLeft: 27, width: "100%" }}
               value={q} onChange={e => setQ(e.target.value)}
-              placeholder={tab === "fundraising" ? "Search seeking posts..." : "Search deploying posts..."} />
+              placeholder={tab === "fundraising" ? "Search fundraising posts..." : "Search investment posts..."} />
           </div>
           {/* Filter toggle */}
           <button className={`btn btn-g btn-sm${showFilters ? " on" : ""}`}
@@ -2811,6 +2811,72 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
             </button>
           </div>
         </div>
+
+        {/* ── Quick chips ── */}
+        {(() => {
+          // Smart quick filters — compound presets, context-aware per tab
+          const fundraisingChips = [
+            { id: "qf-angels",   label: "👼 Angels",     apply: () => { setFltRound("angels");       setFltType(null); } },
+            { id: "qf-seed",     label: "🌱 Seed",        apply: () => { setFltRound("seed");         setFltType(null); } },
+            { id: "qf-pretge",   label: "🚀 Pre-TGE",     apply: () => { setFltRound("pre-tge");      setFltType(null); } },
+            { id: "qf-grant",    label: "🎁 Grant",        apply: () => { setFltType("grant");         setFltRound(null); } },
+            { id: "qf-hackathon",label: "🏆 Hackathon",   apply: () => { setFltRound("hackathon");    setFltType("hackathon"); } },
+            { id: "qf-strategic",label: "🤝 Strategic",   apply: () => { setFltRound("strategic");    setFltType("strategic"); } },
+            { id: "qf-defi",     label: "⚡ DeFi",         apply: () => { setFltVerticals(["defi"]);   setFltRound(null); } },
+            { id: "qf-ai",       label: "🤖 AI+Web3",      apply: () => { setFltVerticals(["ai-web3"]); setFltRound(null); } },
+          ];
+          const investingChips = [
+            { id: "qi-early",    label: "🌱 Early Stage",  apply: () => { setFltRound("seed");         setFltType(null); } },
+            { id: "qi-token",    label: "🪙 Token Deals",  apply: () => { setFltRound("pre-tge");      setFltInstrument("saft"); } },
+            { id: "qi-defi",     label: "⚡ DeFi",          apply: () => { setFltVerticals(["defi"]);   setFltRound(null); } },
+            { id: "qi-infra",    label: "🏗 Infra / L2",   apply: () => { setFltVerticals(["l2","infra"]); setFltRound(null); } },
+            { id: "qi-ai",       label: "🤖 AI+Web3",       apply: () => { setFltVerticals(["ai-web3"]); setFltRound(null); } },
+            { id: "qi-gamefi",   label: "🎮 GameFi",        apply: () => { setFltVerticals(["gamefi"]); setFltRound(null); } },
+            { id: "qi-equity",   label: "💼 Equity",        apply: () => { setFltInstrument("equity");  setFltRound(null); } },
+            { id: "qi-grants",   label: "🎁 Grants",        apply: () => { setFltRound("grant-web3");   setFltType(null); } },
+          ];
+          const chips = tab === "fundraising" ? fundraisingChips : investingChips;
+          const activeChip = chips.find(c => {
+            if (c.id.startsWith("qf-defi") || c.id.startsWith("qi-defi")) return fltVerticals.includes("defi");
+            if (c.id.startsWith("qi-infra")) return fltVerticals.some(v => ["l2","infra"].includes(v));
+            if (c.id.startsWith("qi-ai") || c.id.startsWith("qf-ai")) return fltVerticals.includes("ai-web3");
+            if (c.id.startsWith("qi-gamefi")) return fltVerticals.includes("gamefi");
+            if (c.id === "qf-grant" || c.id === "qi-grants") return fltType === "grant" || fltRound?.startsWith("grant");
+            return false;
+          })?.id ?? null;
+
+          return (
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+              {chips.map(chip => {
+                const isOn = activeChip === chip.id ||
+                  (chip.id === "qf-angels"    && fltRound === "angels") ||
+                  (chip.id === "qf-seed"      && fltRound === "seed") ||
+                  (chip.id === "qf-pretge"    && fltRound === "pre-tge") ||
+                  (chip.id === "qf-grant"     && fltType === "grant") ||
+                  (chip.id === "qf-hackathon" && fltRound === "hackathon") ||
+                  (chip.id === "qf-strategic" && fltRound === "strategic") ||
+                  (chip.id === "qi-early"     && fltRound === "seed") ||
+                  (chip.id === "qi-token"     && fltRound === "pre-tge" && fltInstrument === "saft") ||
+                  (chip.id === "qi-equity"    && fltInstrument === "equity");
+                return (
+                  <button key={chip.id}
+                    onClick={() => { isOn ? clearFilters() : chip.apply(); }}
+                    style={{
+                      fontSize: 12, padding: "4px 11px", borderRadius: 20,
+                      border: `1px solid ${isOn ? "var(--accent)" : "var(--border)"}`,
+                      background: isOn ? "var(--accent)" : "var(--bg2)",
+                      color: isOn ? "#fff" : "var(--fg2)",
+                      cursor: "pointer", fontWeight: isOn ? 600 : 400,
+                      transition: "all .15s",
+                      whiteSpace: "nowrap",
+                    }}>
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* ── Expanded filter panel ── */}
         {showFilters && (
@@ -2947,7 +3013,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
                 </div>
               );
             })}
-            {!filtered.length && <div className="empty"><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No seeking posts" : "No deploying posts"}</div></div>}
+            {!filtered.length && <div className="empty"><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No fundraising posts" : "No investment posts"}</div></div>}
           </div>
         )}
 
@@ -2965,7 +3031,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
                   {/* Card header */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: ".5px" }}>
-                      {isInvesting ? "💰 Deploying" : "📣 " + (SEEKING_TYPES.find(s=>s.id===d.seekingType)?.label || "Seeking")}
+                      {isInvesting ? "💼 Investments" : "📈 " + (SEEKING_TYPES.find(s=>s.id===d.seekingType)?.label || "Fundraising")")}
                     </div>
                     <span style={{ fontSize: 10.5, color: st.color, background: "var(--bg3)", padding: "2px 6px", borderRadius: 3, fontWeight: 600, flexShrink: 0 }}>
                       {st.id === "active" ? "●" : st.id === "filled" ? "✓" : "⏸"} {st.label}
@@ -3013,7 +3079,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
                 </div>
               );
             })}
-            {!filtered.length && <div className="empty" style={{ gridColumn: "1/-1" }}><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No seeking posts" : "No deploying posts"}</div></div>}
+            {!filtered.length && <div className="empty" style={{ gridColumn: "1/-1" }}><div className="empty-ic"><I n="deals" s={15} c="var(--fg3)" /></div><div className="empty-t">{tab === "fundraising" ? "No fundraising posts" : "No investment posts"}</div></div>}
           </div>
         )}
       </>)}
