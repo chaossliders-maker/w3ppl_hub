@@ -1007,6 +1007,10 @@ const SEED_PROJECTS = [
 const SEED_DEALS = [
   { id: "d1", title: "Seed Round — FlowBridge", projectName: "FlowBridge", projectId: "p1", round: "seed", status: "active", seekingType: "capital", amount: 3000000, currency: "USD", token: "FLOW", tokenType: "utility", instrument: "saft", valuationCap: 10000000, fdv: null, cliffMonths: 6, vestingMonths: 18, tgeUnlockPct: 10, description: "Raising $3M seed for cross-chain bridge.", terms: "$10M valuation cap. SAFT. 18m vest 6m cliff.", leadRequired: true, proRata: true, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "1200 waitlist, $850K TVL testnet", existingInvestors: "", closeDate: "2024-06-01", tags: ["bridge","defi","l2","sg"], contactIds: ["c2","c1"], companyIds: [], projectIds: ["p1"], comments: [], views: 312, createdBy: "c2", createdAt: "2024-02-01" },
   { id: "d2", title: "Strategic Round — ArcadeChain", projectName: "ArcadeChain", projectId: null, round: "strategic", status: "active", seekingType: "strategic", amount: 1500000, currency: "USD", token: "ARC", tokenType: "governance", instrument: "safe-warrant", valuationCap: 8000000, fdv: 40000000, cliffMonths: 12, vestingMonths: 24, tgeUnlockPct: 5, description: "Gaming L2. Looking for exchanges, launchpads, gaming studios.", terms: "Token warrants + equity. 24m vesting.", leadRequired: false, proRata: false, kycRequired: false, geoRestrictions: [], deckUrl: "", dataroomUrl: "", traction: "50K TPS testnet, 3 studios LOI", existingInvestors: "Spartan Group", closeDate: "", tags: ["gamefi","l2","sg","asia"], contactIds: ["c4"], companyIds: [], projectIds: [], comments: [], views: 234, createdBy: "c4", createdAt: "2024-02-20" },
+  { id: "d3", title: "Ecosystem Grant — zkID Protocol", projectName: "zkID Protocol", projectId: "p2", round: "grant-web3", status: "active", seekingType: "grant", amount: 150000, amountMin: 50000, currency: "USD", instrument: "grant", description: "Applying for Ethereum Foundation grants for ZK identity research. Open to Polygon, Near, Arbitrum ecosystem grants too.", traction: "4 academic papers, 2 university partnerships, ETHGlobal finalist", tags: ["zk","identity","privacy","research"], contactIds: ["c5"], companyIds: [], projectIds: ["p2"], comments: [], views: 88, createdBy: "c5", createdAt: "2024-03-01" },
+  { id: "d4", title: "Hackathon Team — ETHGlobal Bangkok", projectName: "", round: "hackathon", status: "active", seekingType: "hackathon", amount: 10000, currency: "USD", instrument: "grant", description: "Looking for a ZK engineer and frontend dev to build a DeFi risk dashboard at ETHGlobal Bangkok. 3-person team.", traction: "2 previous ETHGlobal prizes", tags: ["zk","defi","hackathon","apac"], contactIds: [ME_ID], companyIds: [], projectIds: [], comments: [], views: 45, createdBy: ME_ID, createdAt: "2024-03-08" },
+  { id: "d5", title: "Spartan Capital — Deploying $50K–$500K", dealMode: "investing", title: "Spartan Capital — Seed & Pre-TGE", investorType: "crypto-fund", status: "active", minTicket: 50000, maxTicket: 500000, currency: "USD", preferredStages: ["seed","pre-seed","private-sale","pre-tge"], preferredInstruments: ["saft","safe-warrant","token"], preferredVerticals: ["defi","l2","bridge","infra"], preferredGeos: ["global"], coInvestOk: true, leadOnly: false, kycOk: true, proRataReq: true, valueAdd: ["exchange","bd","liquidity"], description: "Crypto-native fund. $50K–$500K tickets. Focus: DeFi, L2, infrastructure. Strong exchange relationships.", maxCliffMonths: 12, minVestingMonths: 12, maxVestingMonths: 36, contactIds: ["c1"], companyIds: ["co1"], projectIds: [], comments: [], views: 189, createdBy: "c1", createdAt: "2024-01-15" },
+
 ];
 const SEED_LF = [
   { id: "lf1", type: "looking", title: "Market Maker for DEX listing", body: "Launching on Uniswap v4, need professional MM. Budget $30k/month.", tags: ["market-maker", "dex", "defi"], createdBy: "c2", createdAt: "2024-03-12", expires: "2024-04-12", views: 89, comments: [] },
@@ -2115,9 +2119,11 @@ function instrumentCompat(fInstrument: string, fRound: string, iInstruments: str
     "equity":        ["equity", "safe", "convertible", "lp", "any"],
     "token":         ["token", "saft", "safe-warrant", "any"],
     "convertible":   ["convertible", "safe", "equity", "any"],
+    "venture-debt":  ["venture-debt", "convertible", "rbf", "any"],
+    "rbf":           ["rbf", "venture-debt", "any"],
     "otc":           ["otc", "token", "any"],
     "grant":         ["grant", "any"],
-    "revenue-share": ["revenue-share", "any"],
+    "revenue-share": ["revenue-share", "rbf", "any"],
     "lp":            ["lp", "equity", "any"],
   };
   const compatList = compat[fInstrument] || [];
@@ -2125,12 +2131,16 @@ function instrumentCompat(fInstrument: string, fRound: string, iInstruments: str
   if (matches.length > 0) return 0.65;
   // Stage-based fallback if no instrument specified on fundraiser
   if (!fInstrument) {
-    const tokenStages = ["pre-tge","tge","private-sale","public-sale"];
-    const equityStages = ["series-a","series-b","strategic"];
+    const tokenStages = ["pre-tge","tge","private-sale","ido-ieo","launchpad","lp-provision"];
+    const equityStages = ["series-a","series-b","series-c-plus","strategic"];
     const earlyStages = ["angels","pre-seed","seed"];
+    const grantStages = ["grant-web3","grant-defi","grant-gov","gitcoin","retropgf","ecosystem-fund","hackathon","bounty"];
+    const debtStages = ["safe","saft","convertible","venture-debt","rbf"];
+    if (grantStages.includes(fRound) && iInstruments.some(i => ["grant","any"].includes(i))) return 0.9;
     if (tokenStages.includes(fRound) && iInstruments.some(i => ["saft","token","safe-warrant"].includes(i))) return 0.7;
     if (equityStages.includes(fRound) && iInstruments.some(i => ["equity","safe","convertible"].includes(i))) return 0.7;
     if (earlyStages.includes(fRound) && iInstruments.some(i => ["safe","safe-warrant","saft"].includes(i))) return 0.7;
+    if (debtStages.includes(fRound) && iInstruments.some(i => ["convertible","safe","saft"].includes(i))) return 0.7;
     return 0.4;
   }
   return 0.2;
@@ -2528,14 +2538,14 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
       <div style={{ fontSize: 44 }}>🤝</div>
       <div style={{ fontSize: 16, fontWeight: 800 }}>Create deals to unlock Synergy</div>
       <div style={{ fontSize: 13, color: "var(--fg3)", maxWidth: 360, lineHeight: 1.7 }}>
-        Synergy matches open <strong>Fundraising</strong> deals with active <strong>Investing</strong> criteria — automatically scored by vertical, stage, ticket, instrument, geo & terms.
+        Synergy matches <strong>Seeking</strong> posts (projects looking for capital, grants, accelerators) with <strong>Deploying</strong> posts (investors, funds, grant programs) — automatically scored by vertical, stage, ticket, instrument, geo & terms.
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn btn-p" onClick={() => onSwitchTab("fundraising")}>
-          <I n="plus" s={13} /> Add Fundraising Deal
+          <I n="plus" s={13} /> I'm Seeking
         </button>
         <button className="btn btn-g" onClick={() => onSwitchTab("investing")}>
-          <I n="plus" s={13} /> Deploy Capital
+          <I n="plus" s={13} /> I'm Deploying
         </button>
       </div>
     </div>
@@ -2574,7 +2584,7 @@ function SynergyTab({ deals, onOpen, onSwitchTab }: { deals: any[]; onOpen: (typ
         {[
           { label: "🔥 Hot",        val: hotCount,          color: "var(--warn-fg)",         bg: "var(--warn-bg)",  border: "var(--warn-border)" },
           { label: "✅ Good",        val: goodCount,          color: "var(--tf-g)",            bg: "var(--ok-bg)",   border: "var(--ok-border)" },
-          { label: "📈 Raising",    val: fundraisers.length, color: "oklch(0.6 0.14 240)",    bg: "var(--bg2)",     border: "var(--border)" },
+          { label: "📣 Seeking",    val: fundraisers.length, color: "oklch(0.6 0.14 240)",    bg: "var(--bg2)",     border: "var(--border)" },
           { label: "💰 Deploying",  val: investors.length,   color: "oklch(0.6 0.14 160)",    bg: "var(--bg2)",     border: "var(--border)" },
         ].map(s => (
           <div key={s.label} style={{ flex: 1, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 7, padding: "7px 8px", textAlign: "center" }}>
@@ -3576,8 +3586,8 @@ Fill ALL schema fields from this research. Add source info to notes: "Auto-enric
         " Projects:" + JSON.stringify(projects.slice(0,10).map(p=>({id:p.id,name:p.name})));
       const userPrompt = `Extract a ${type.toUpperCase()} entity. Fill EVERY field you can determine.
 CRITICAL for description/body/notes: copy verbatim from TEXT. Preserve ALL newlines, emoji, bullets.
-For deals (fundraising mode): title = "ProjectName — RoundLabel · $Amount". REQUIRED: subEntities MUST include the funded project AND named people.
-For deals (investing/deploy capital mode): dealMode = "investing". Extract: title (investor/fund name), description (strategy), minTicket (number, USD, min 0.10), maxTicket (0 = unlimited), preferredStages (array of round ids from: angels,pre-seed,seed,strategic,private-sale,series-a,series-b,pre-tge,public-sale,tge,otc,grants,ecosystem-fund), preferredVerticals (array), preferredGeos (array), instrument (equity|token|safe|otc|lp|any), terms (additional criteria).
+For deals (seeking mode — project/team looking for capital, grant, or support): dealMode = "seeking" (or omit). Extract: title ("ProjectName — RoundLabel · $Amount" or grant/hackathon equivalent), seekingType (capital/grant/hackathon/accelerator/strategic/liquidity/any), round (from: angels,pre-seed,seed,series-a,series-b,series-c-plus,strategic,private-sale,pre-tge,tge,ido-ieo,launchpad,otc,lp-provision,safe,saft,convertible,venture-debt,rbf,grant-web3,grant-defi,grant-gov,gitcoin,retropgf,ecosystem-fund,accelerator,incubator,hackathon,bounty,secondary), status (active/paused/filled/expired/draft), amount (number, max/target), amountMin (number, min), currency (USD/EUR/USDT/USDC/ETH/BTC/SOL/etc), instrument (saft/safe/safe-warrant/equity/token/convertible/venture-debt/rbf/grant/otc/lp/any), token (ticker), tokenType (utility/governance/revenue/payment/nft/rwa/none), tokenExists (yes/planned/no), valuationCap (number), fdv (number), cliffMonths (int), vestingMonths (int), tgeUnlockPct (int 0-100), projectName, description, traction, existingInvestors, closeDate (YYYY-MM-DD), deckUrl, dataroomUrl, jurisdiction (cayman/bvi/delaware/singapore/uae/swiss/estonia/uk/other), idealInvestorTypes (array), leadRequired (bool), proRata (bool), kycRequired (bool), boardSeatOk (bool), audited (bool), doxxed (bool), geoRestrictions (array). REQUIRED: subEntities MUST include the funded project AND named people.
+For deals (investing/deploy capital mode): dealMode = "investing". Extract: title (investor/fund name), description (strategy), minTicket (number, USD, min 0.10), maxTicket (0 = unlimited), currency (USD/EUR/GBP/USDT/USDC/ETH/BTC/SOL/etc), preferredStages (array of round ids from: angels,pre-seed,seed,series-a,series-b,series-c-plus,strategic,private-sale,pre-tge,tge,ido-ieo,launchpad,otc,lp-provision,safe,saft,convertible,venture-debt,rbf,grant-web3,grant-defi,grant-gov,gitcoin,retropgf,ecosystem-fund,accelerator,incubator,hackathon,bounty,secondary), preferredVerticals (array), preferredGeos (array), preferredInstruments (array: saft/safe/safe-warrant/equity/token/convertible/venture-debt/rbf/grant/otc/lp/any), investorType (angel/micro-vc/vc/crypto-fund/family-office/syndicate/dao/ecosystem/corporate-vc/hni/foundation/accelerator/launchpad/grant-org), valueAdd (array: tech/marketing/bd/exchange/legal/tokenomics/liquidity/community/regulatory/none), coInvestOk, leadOnly, kycOk, proRataReq, boardSeatReq, terms (additional criteria).
 Dedup: if name/projectName closely matches existing DB entity, return dedup:{entity:{id,name},score}.
 Tags:[${TAG_LIST}] Roles:[${ROLE_LIST}]
 ${existingCtx}
