@@ -3031,7 +3031,7 @@ function DealsPage({ deals, contacts, onOpenEntity, onCreate, currentUserId }) {
                   {/* Card header */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: ".5px" }}>
-                      {isInvesting ? "💼 Investments" : "📈 " + (SEEKING_TYPES.find(s=>s.id===d.seekingType)?.label || "Fundraising")")}
+                      {isInvesting ? "💼 Investing" : "📈 " + (SEEKING_TYPES.find(s=>s.id===d.seekingType)?.label || "Fundraising")}
                     </div>
                     <span style={{ fontSize: 10.5, color: st.color, background: "var(--bg3)", padding: "2px 6px", borderRadius: 3, fontWeight: 600, flexShrink: 0 }}>
                       {st.id === "active" ? "●" : st.id === "filled" ? "✓" : "⏸"} {st.label}
